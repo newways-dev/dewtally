@@ -65,8 +65,9 @@
                              constraintName="uq_document_per_tenant"/>
 
         <sql>
-            ALTER TABLE invoice_document ADD CONSTRAINT ck_invoice_document_source_format
-                CHECK (source_format IN ('XRECHNUNG_UBL', 'XRECHNUNG_CII', 'ZUGFERD', 'PDF', 'UNKNOWN'));
+            ALTER TABLE invoice_document
+                ADD CONSTRAINT ck_invoice_document_source_format
+                    CHECK (source_format IN ('XRECHNUNG_UBL', 'XRECHNUNG_CII', 'ZUGFERD', 'PDF', 'UNKNOWN'));
         </sql>
 
         <rollback>
@@ -121,10 +122,12 @@
         </createTable>
 
         <sql>
-            ALTER TABLE invoice ADD CONSTRAINT ck_invoice_status
-                CHECK (status IN ('RECEIVED', 'VALID', 'INVALID', 'NEEDS_REVIEW', 'ACCEPTED', 'EXPORTED'));
-            ALTER TABLE invoice ADD CONSTRAINT ck_invoice_extraction_method
-                CHECK (extraction_method IN ('STRUCTURED', 'LLM', 'MANUAL'));
+            ALTER TABLE invoice
+                ADD CONSTRAINT ck_invoice_status
+                    CHECK (status IN ('RECEIVED', 'VALID', 'INVALID', 'NEEDS_REVIEW', 'ACCEPTED', 'EXPORTED'));
+            ALTER TABLE invoice
+                ADD CONSTRAINT ck_invoice_extraction_method
+                    CHECK (extraction_method IN ('STRUCTURED', 'LLM', 'MANUAL'));
         </sql>
 
         <createIndex tableName="invoice" indexName="ix_invoice_tenant_status">
@@ -200,8 +203,9 @@
         </createTable>
 
         <sql>
-            ALTER TABLE validation_issue ADD CONSTRAINT ck_validation_issue_severity
-                CHECK (severity IN ('ERROR', 'WARNING', 'INFO'));
+            ALTER TABLE validation_issue
+                ADD CONSTRAINT ck_validation_issue_severity
+                    CHECK (severity IN ('ERROR', 'WARNING', 'INFO'));
         </sql>
 
         <createIndex tableName="validation_issue" indexName="ix_validation_issue_invoice">
