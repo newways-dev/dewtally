@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- Table 1: tenant -->
+    <changeSet id="001-create-tenant" author="kate">
+        <createTable tableName="tenant">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" primaryKeyName="pk_tenant"/>
+            </column>
+            <column name="name" type="VARCHAR(200)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="parent_tenant_id" type="UUID">
+                <constraints foreignKeyName="fk_tenant_parent"
+                             referencedTableName="tenant" referencedColumnNames="id"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <rollback>
+            <dropTable tableName="tenant"/>
+        </rollback>
+    </changeSet>
+
+    <!-- Table 2: invoice_document -->
+    <changeSet id="002-create-invoice-document" author="kate">
+        <createTable tableName="invoice_document">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" primaryKeyName="pk_invoice_document"/>
+            </column>
+            <column name="tenant_id" type="UUID">
+                <constraints nullable="false" foreignKeyName="fk_invoice_document_tenant"
+                             referencedTableName="tenant" referencedColumnNames="id"/>
+            </column>
+            <column name="file_name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="content_type" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="size_bytes" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="sha256" type="CHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="storage_key" type="VARCHAR(500)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="source_format" type="VARCHAR(30)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="uploaded_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addUniqueConstraint tableName="invoice_document"
+                             columnNames="tenant_id, sha256"
+                             constraintName="uq_document_per_tenant"/>
+
+        <sql>
+            ALTER TABLE invoice_document ADD CONSTRAINT ck_invoice_document_source_format
+                CHECK (source_format IN ('XRECHNUNG_UBL', 'XRECHNUNG_CII', 'ZUGFERD', 'PDF', 'UNKNOWN'));
+        </sql>
+
+        <rollback>
+            <dropTable tableName="invoice_document"/>
+        </rollback>
+    </changeSet>
+
+    <!-- Table 3: invoice -->
+    <changeSet id="003-create-invoice" author="kate">
+        <createTable tableName="invoice">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" primaryKeyName="pk_invoice"/>
+            </column>
+            <column name="tenant_id" type="UUID">
+                <constraints nullable="false" foreignKeyName="fk_invoice_tenant"
+                             referencedTableName="tenant" referencedColumnNames="id"/>
+            </column>
+            <column name="document_id" type="UUID">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uq_invoice_document"
+                             foreignKeyName="fk_invoice_document"
+                             referencedTableName="invoice_document" referencedColumnNames="id"/>
+            </column>
+            <column name="status" type="VARCHAR(30)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="extraction_method" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="invoice_number" type="VARCHAR(100)"/>
+            <column name="issue_date" type="DATE"/>
+            <column name="due_date" type="DATE"/>
+            <column name="currency" type="CHAR(3)"/>
+            <column name="supplier_name" type="VARCHAR(300)"/>
+            <column name="supplier_vat_id" type="VARCHAR(30)"/>
+            <column name="buyer_reference" type="VARCHAR(100)"/>
+            <column name="iban" type="VARCHAR(34)"/>
+
+            <column name="net_amount" type="NUMERIC(15, 2)"/>
+            <column name="tax_amount" type="NUMERIC(15, 2)"/>
+            <column name="gross_amount" type="NUMERIC(15, 2)"/>
+
+            <column name="version" type="BIGINT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <sql>
+            ALTER TABLE invoice ADD CONSTRAINT ck_invoice_status
+                CHECK (status IN ('RECEIVED', 'VALID', 'INVALID', 'NEEDS_REVIEW', 'ACCEPTED', 'EXPORTED'));
+            ALTER TABLE invoice ADD CONSTRAINT ck_invoice_extraction_method
+                CHECK (extraction_method IN ('STRUCTURED', 'LLM', 'MANUAL'));
+        </sql>
+
+        <createIndex tableName="invoice" indexName="ix_invoice_tenant_status">
+            <column name="tenant_id"/>
+            <column name="status"/>
+        </createIndex>
+
+        <createIndex tableName="invoice" indexName="ix_invoice_duplicate_check">
+            <column name="tenant_id"/>
+            <column name="supplier_vat_id"/>
+            <column name="invoice_number"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable tableName="invoice"/>
+        </rollback>
+    </changeSet>
+
+    <!-- Table 4: invoice_line -->
+    <changeSet id="004-create-invoice-line" author="kate">
+        <createTable tableName="invoice_line">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" primaryKeyName="pk_invoice_line"/>
+            </column>
+            <column name="invoice_id" type="UUID">
+                <constraints nullable="false" foreignKeyName="fk_invoice_line_invoice"
+                             referencedTableName="invoice" referencedColumnNames="id"
+                             deleteCascade="true"/>
+            </column>
+            <column name="line_no" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="description" type="VARCHAR(1000)"/>
+            <column name="quantity" type="NUMERIC(15, 4)"/>
+            <column name="unit_code" type="VARCHAR(10)"/>
+            <column name="unit_price" type="NUMERIC(15, 4)"/>
+            <column name="net_amount" type="NUMERIC(15, 2)"/>
+            <column name="tax_rate" type="NUMERIC(5, 2)"/>
+        </createTable>
+
+        <addUniqueConstraint tableName="invoice_line"
+                             columnNames="invoice_id, line_no"
+                             constraintName="uq_invoice_line"/>
+
+        <rollback>
+            <dropTable tableName="invoice_line"/>
+        </rollback>
+    </changeSet>
+
+    <!-- Table 5: validation_issue -->
+    <changeSet id="005-create-validation-issue" author="kate">
+        <createTable tableName="validation_issue">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" primaryKeyName="pk_validation_issue"/>
+            </column>
+            <column name="invoice_id" type="UUID">
+                <constraints nullable="false" foreignKeyName="fk_validation_issue_invoice"
+                             referencedTableName="invoice" referencedColumnNames="id"
+                             deleteCascade="true"/>
+            </column>
+            <column name="severity" type="VARCHAR(10)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="rule_id" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="message" type="VARCHAR(2000)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <sql>
+            ALTER TABLE validation_issue ADD CONSTRAINT ck_validation_issue_severity
+                CHECK (severity IN ('ERROR', 'WARNING', 'INFO'));
+        </sql>
+
+        <createIndex tableName="validation_issue" indexName="ix_validation_issue_invoice">
+            <column name="invoice_id"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable tableName="validation_issue"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
