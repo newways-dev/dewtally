@@ -18,10 +18,11 @@ public record DocumentResponse(
         String sha256,
         SourceFormat sourceFormat,
         String profile,
-        Instant uploadedAt
+        Instant uploadedAt,
+        UUID invoiceId
 ) {
 
-    static DocumentResponse from(InvoiceDocument document) {
+    static DocumentResponse from(InvoiceDocument document, UUID invoiceId) {
         return new DocumentResponse(
                 document.getId(),
                 document.getFileName(),
@@ -30,6 +31,7 @@ public record DocumentResponse(
                 document.getSha256(),
                 document.getSourceFormat(),
                 document.getProfile(),
-                document.getUploadedAt());
+                document.getUploadedAt(),
+                invoiceId);
     }
 }

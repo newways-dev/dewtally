@@ -11,5 +11,7 @@ public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
     // Always scoped by tenant: a tenant must never be able to read another tenant's invoice.
     Optional<Invoice> findByIdAndTenantId(UUID id, UUID tenantId);
 
+    Optional<Invoice> findByTenantIdAndDocumentId(UUID tenantId, UUID documentId);
+
     List<Invoice> findByTenantIdAndStatus(UUID tenantId, InvoiceStatus status);
 }

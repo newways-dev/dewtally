@@ -2,6 +2,10 @@ package com.kate.dewtally.ingestion;
 
 import com.jayway.jsonpath.JsonPath;
 import com.kate.dewtally.TestcontainersConfiguration;
+import com.kate.dewtally.invoice.ExtractionMethod;
+import com.kate.dewtally.invoice.Invoice;
+import com.kate.dewtally.invoice.InvoiceRepository;
+import com.kate.dewtally.invoice.InvoiceStatus;
 import com.kate.dewtally.tenant.Tenant;
 import com.kate.dewtally.tenant.TenantRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,9 +21,12 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.WebApplicationContext;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -40,6 +47,9 @@ class DocumentUploadControllerTest {
     @Autowired
     private TenantRepository tenants;
 
+    @Autowired
+    private InvoiceRepository invoices;
+
     private MockMvc mvc;
 
     private static RequestBuilder upload(UUID tenantId, byte[] content) {
@@ -50,6 +60,15 @@ class DocumentUploadControllerTest {
 
     private static MockMultipartFile file(byte[] content) {
         return new MockMultipartFile("file", "rechnung-2041.xml", "application/xml", content);
+    }
+
+    private static byte[] resource(String name) throws IOException {
+        try (InputStream in = DocumentUploadControllerTest.class.getResourceAsStream("/invoices/" + name)) {
+            if (in == null) {
+                throw new IllegalStateException("Missing test resource /invoices/" + name);
+            }
+            return in.readAllBytes();
+        }
     }
 
     @BeforeEach
@@ -68,6 +87,25 @@ class DocumentUploadControllerTest {
                 .andExpect(jsonPath("$.sizeBytes").value(XML.length))
                 .andExpect(jsonPath("$.sha256").value(Sha256.hex(XML)))
                 .andExpect(jsonPath("$.sourceFormat").value("UNKNOWN"));
+    }
+
+    @Test
+    void createsAnInvoiceFromAnUploadedXRechnung() throws Exception {
+        UUID tenantId = newTenant();
+
+        MvcResult result = mvc.perform(upload(tenantId, resource("xrechnung-ubl.xml")))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.sourceFormat").value("UBL"))
+                .andExpect(jsonPath("$.invoiceId").isNotEmpty())
+                .andReturn();
+        String invoiceId = JsonPath.read(result.getResponse().getContentAsString(), "$.invoiceId");
+
+        Invoice invoice = invoices.findByIdAndTenantId(UUID.fromString(invoiceId), tenantId).orElseThrow();
+        assertThat(invoice.getInvoiceNumber()).isEqualTo("RE-2041");
+        assertThat(invoice.getGrossAmount()).isEqualByComparingTo("1428.00");
+        assertThat(invoice.getExtractionMethod()).isEqualTo(ExtractionMethod.STRUCTURED);
+        assertThat(invoice.getStatus()).isEqualTo(InvoiceStatus.RECEIVED);
+        assertThat(invoice.getLines()).hasSize(2);
     }
 
     @Test
