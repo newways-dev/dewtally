@@ -4,15 +4,13 @@ import com.kate.dewtally.document.InvoiceDocument;
 import com.kate.dewtally.document.InvoiceDocumentRepository;
 import com.kate.dewtally.format.DetectedFormat;
 import com.kate.dewtally.format.FormatDetector;
-import com.kate.dewtally.invoice.ExtractionMethod;
-import com.kate.dewtally.invoice.Invoice;
-import com.kate.dewtally.invoice.InvoiceLine;
-import com.kate.dewtally.invoice.InvoiceService;
+import com.kate.dewtally.invoice.*;
 import com.kate.dewtally.parsing.InvoiceParser;
 import com.kate.dewtally.parsing.ParsedInvoice;
 import com.kate.dewtally.parsing.ParsedLine;
 import com.kate.dewtally.storage.DocumentStorage;
 import com.kate.dewtally.tenant.TenantRepository;
+import com.kate.dewtally.validation.InvoiceValidationService;
 import com.kate.dewtally.xml.InvalidXmlException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,8 +28,8 @@ import java.util.UUID;
 
 /**
  * Accepts an uploaded file: hashes it, skips files the tenant already uploaded,
- * detects its format, stores the original, records it as an invoice document
- * and, for structured e-invoices, creates the invoice from its data.
+ * detects its format, stores the original, records it as an invoice document and,
+ * for structured e-invoices, creates the invoice from its data and validates it.
  * <p>
  * Deliberately not @Transactional: storing a file is not part of a database transaction,
  * and each database write below runs in its own short transaction.
@@ -50,19 +48,22 @@ public class DocumentUploadService {
     private final FormatDetector formatDetector;
     private final InvoiceParser invoiceParser;
     private final InvoiceService invoiceService;
+    private final InvoiceValidationService validationService;
 
     public DocumentUploadService(TenantRepository tenants,
                                  InvoiceDocumentRepository documents,
                                  DocumentStorage storage,
                                  FormatDetector formatDetector,
                                  InvoiceParser invoiceParser,
-                                 InvoiceService invoiceService) {
+                                 InvoiceService invoiceService,
+                                 InvoiceValidationService validationService) {
         this.tenants = tenants;
         this.documents = documents;
         this.storage = storage;
         this.formatDetector = formatDetector;
         this.invoiceParser = invoiceParser;
         this.invoiceService = invoiceService;
+        this.validationService = validationService;
     }
 
     private static InvoiceLine toInvoiceLine(ParsedLine line) {
@@ -187,8 +188,11 @@ public class DocumentUploadService {
                 parsed.get().data(),
                 lines);
 
-        log.info("Created invoice {} with {} lines from document {}",
-                invoice.getId(), lines.size(), document.getId());
+        InvoiceStatus status = validationService.validate(
+                document.getTenantId(), invoice.getId(), document.getSourceFormat(), document.getProfile());
+
+        log.info("Created invoice {} with {} lines from document {}, status {}",
+                invoice.getId(), lines.size(), document.getId(), status);
         return invoice.getId();
     }
 }
