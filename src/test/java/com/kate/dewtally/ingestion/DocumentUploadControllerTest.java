@@ -2,10 +2,7 @@ package com.kate.dewtally.ingestion;
 
 import com.jayway.jsonpath.JsonPath;
 import com.kate.dewtally.TestcontainersConfiguration;
-import com.kate.dewtally.invoice.ExtractionMethod;
-import com.kate.dewtally.invoice.Invoice;
-import com.kate.dewtally.invoice.InvoiceRepository;
-import com.kate.dewtally.invoice.InvoiceStatus;
+import com.kate.dewtally.invoice.*;
 import com.kate.dewtally.tenant.Tenant;
 import com.kate.dewtally.tenant.TenantRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -90,22 +87,41 @@ class DocumentUploadControllerTest {
     }
 
     @Test
-    void createsAnInvoiceFromAnUploadedXRechnung() throws Exception {
+    void createsAndValidatesAnInvoiceFromAnUploadedXRechnung() throws Exception {
         UUID tenantId = newTenant();
 
-        MvcResult result = mvc.perform(upload(tenantId, resource("xrechnung-ubl.xml")))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.sourceFormat").value("UBL"))
-                .andExpect(jsonPath("$.invoiceId").isNotEmpty())
-                .andReturn();
-        String invoiceId = JsonPath.read(result.getResponse().getContentAsString(), "$.invoiceId");
+        Invoice invoice = uploadInvoice(tenantId, resource("xrechnung-ubl.xml"));
 
-        Invoice invoice = invoices.findByIdAndTenantId(UUID.fromString(invoiceId), tenantId).orElseThrow();
         assertThat(invoice.getInvoiceNumber()).isEqualTo("RE-2041");
         assertThat(invoice.getGrossAmount()).isEqualByComparingTo("1428.00");
         assertThat(invoice.getExtractionMethod()).isEqualTo(ExtractionMethod.STRUCTURED);
-        assertThat(invoice.getStatus()).isEqualTo(InvoiceStatus.RECEIVED);
         assertThat(invoice.getLines()).hasSize(2);
+        assertThat(invoice.getStatus()).isEqualTo(InvoiceStatus.VALID);
+        assertThat(invoice.getIssues()).isEmpty();
+    }
+
+    @Test
+    void marksAnInvoiceWithWrongTotalsAsInvalid() throws Exception {
+        String wrongTotal = new String(resource("xrechnung-ubl.xml"), StandardCharsets.UTF_8).replace(
+                "<cbc:TaxInclusiveAmount currencyID=\"EUR\">1428.00</cbc:TaxInclusiveAmount>",
+                "<cbc:TaxInclusiveAmount currencyID=\"EUR\">1500.00</cbc:TaxInclusiveAmount>");
+
+        Invoice invoice = uploadInvoice(newTenant(), wrongTotal.getBytes(StandardCharsets.UTF_8));
+
+        assertThat(invoice.getStatus()).isEqualTo(InvoiceStatus.INVALID);
+        assertThat(invoice.getIssues()).extracting(ValidationIssue::getRuleId).contains("BR-CO-15");
+    }
+
+    @Test
+    void sendsTheSameInvoiceInAnotherFormatToReview() throws Exception {
+        UUID tenantId = newTenant();
+        // Different files (different hash), but the same supplier and invoice number.
+        uploadInvoice(tenantId, resource("xrechnung-ubl.xml"));
+
+        Invoice second = uploadInvoice(tenantId, resource("xrechnung-cii.xml"));
+
+        assertThat(second.getStatus()).isEqualTo(InvoiceStatus.NEEDS_REVIEW);
+        assertThat(second.getIssues()).extracting(ValidationIssue::getRuleId).containsExactly("DT-POSSIBLE-DUPLICATE");
     }
 
     @Test
@@ -138,6 +154,15 @@ class DocumentUploadControllerTest {
     void rejectsAnUploadWithoutTenantHeader() throws Exception {
         mvc.perform(multipart("/api/documents").file(file(XML)))
                 .andExpect(status().isBadRequest());
+    }
+
+    private Invoice uploadInvoice(UUID tenantId, byte[] content) throws Exception {
+        MvcResult result = mvc.perform(upload(tenantId, content))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.invoiceId").isNotEmpty())
+                .andReturn();
+        String invoiceId = JsonPath.read(result.getResponse().getContentAsString(), "$.invoiceId");
+        return invoices.findByIdAndTenantId(UUID.fromString(invoiceId), tenantId).orElseThrow();
     }
 
     private UUID newTenant() {
