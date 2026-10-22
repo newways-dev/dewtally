@@ -93,7 +93,7 @@ class InvoiceRepositoryTest {
                 + UUID.randomUUID().toString().replace("-", "");
         InvoiceDocument document = new InvoiceDocument(
                 tenantId, "rechnung.xml", "application/xml", 1_024,
-                randomHash, "local/" + UUID.randomUUID(), SourceFormat.XRECHNUNG_CII);
+                randomHash, "local/" + UUID.randomUUID(), SourceFormat.CII, null);
         return documents.saveAndFlush(document).getId();
     }
 }

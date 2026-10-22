@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                            https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+    <changeSet id="007-split-source-format-and-profile" author="kate">
+        <sql>
+            ALTER TABLE invoice_document DROP CONSTRAINT ck_invoice_document_source_format;
+            UPDATE invoice_document
+            SET source_format = 'UBL'
+            WHERE source_format = 'XRECHNUNG_UBL';
+            UPDATE invoice_document
+            SET source_format = 'CII'
+            WHERE source_format = 'XRECHNUNG_CII';
+            ALTER TABLE invoice_document
+                ADD CONSTRAINT ck_invoice_document_source_format
+                    CHECK (source_format IN ('UBL', 'CII', 'ZUGFERD', 'PDF', 'UNKNOWN'));
+        </sql>
+        <addColumn tableName="invoice_document">
+            <column name="profile" type="VARCHAR(255)"
+                    remarks="Specification declared in the file, e.g. the XRechnung CustomizationID"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="invoice_document" columnName="profile"/>
+            <sql>
+                ALTER TABLE invoice_document DROP CONSTRAINT ck_invoice_document_source_format;
+                UPDATE invoice_document SET source_format = 'XRECHNUNG_UBL' WHERE source_format = 'UBL';
+                UPDATE invoice_document SET source_format = 'XRECHNUNG_CII' WHERE source_format = 'CII';
+                ALTER TABLE invoice_document ADD CONSTRAINT ck_invoice_document_source_format
+                CHECK (source_format IN ('XRECHNUNG_UBL', 'XRECHNUNG_CII', 'ZUGFERD', 'PDF', 'UNKNOWN'));
+            </sql>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>
