@@ -6,7 +6,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * An uploaded file exactly as received. Never modified after upload:
+ * An uploaded file exactly as received. Never modified after upload (GoBD):
  * parsed and corrected data lives in the invoice, not here.
  */
 @Entity
@@ -18,7 +18,6 @@ public class InvoiceDocument {
     private UUID id;
 
     // Stored as a plain id, not a @ManyToOne: the tenant is a security boundary
-    // used for filtering, we never need to navigate from a document to its tenant.
     @Column(name = "tenant_id", nullable = false, updatable = false)
     private UUID tenantId;
 
@@ -42,6 +41,10 @@ public class InvoiceDocument {
     @Column(name = "source_format", nullable = false, updatable = false, length = 30)
     private SourceFormat sourceFormat;
 
+    // The specification the file declares about itself
+    @Column(name = "profile", updatable = false, length = 255)
+    private String profile;
+
     @Column(name = "uploaded_at", nullable = false, updatable = false)
     private Instant uploadedAt;
 
@@ -55,7 +58,8 @@ public class InvoiceDocument {
                            long sizeBytes,
                            String sha256,
                            String storageKey,
-                           SourceFormat sourceFormat) {
+                           SourceFormat sourceFormat,
+                           String profile) {
         this.tenantId = tenantId;
         this.fileName = fileName;
         this.contentType = contentType;
@@ -63,6 +67,7 @@ public class InvoiceDocument {
         this.sha256 = sha256;
         this.storageKey = storageKey;
         this.sourceFormat = sourceFormat;
+        this.profile = profile;
     }
 
     @PrePersist
@@ -100,6 +105,10 @@ public class InvoiceDocument {
 
     public SourceFormat getSourceFormat() {
         return sourceFormat;
+    }
+
+    public String getProfile() {
+        return profile;
     }
 
     public Instant getUploadedAt() {

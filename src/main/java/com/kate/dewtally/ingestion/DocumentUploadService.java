@@ -2,7 +2,8 @@ package com.kate.dewtally.ingestion;
 
 import com.kate.dewtally.document.InvoiceDocument;
 import com.kate.dewtally.document.InvoiceDocumentRepository;
-import com.kate.dewtally.document.SourceFormat;
+import com.kate.dewtally.format.DetectedFormat;
+import com.kate.dewtally.format.FormatDetector;
 import com.kate.dewtally.storage.DocumentStorage;
 import com.kate.dewtally.tenant.TenantRepository;
 import org.slf4j.Logger;
@@ -20,8 +21,8 @@ import java.util.UUID;
 
 /**
  * Accepts an uploaded file: hashes it, skips files the tenant already uploaded,
- * stores the original and records it as an invoice document.
-
+ * detects its format, stores the original and records it as an invoice document.
+ * <p>
  * Deliberately not @Transactional: storing a file is not part of a database transaction,
  * and the database write below runs in its own short transaction.
  */
@@ -36,54 +37,16 @@ public class DocumentUploadService {
     private final TenantRepository tenants;
     private final InvoiceDocumentRepository documents;
     private final DocumentStorage storage;
+    private final FormatDetector formatDetector;
 
     public DocumentUploadService(TenantRepository tenants,
                                  InvoiceDocumentRepository documents,
-                                 DocumentStorage storage) {
+                                 DocumentStorage storage,
+                                 FormatDetector formatDetector) {
         this.tenants = tenants;
         this.documents = documents;
         this.storage = storage;
-    }
-
-    UploadResult upload(UUID tenantId, MultipartFile file) {
-        if (!tenants.existsById(tenantId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown tenant: " + tenantId);
-        }
-        if (file.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Uploaded file is empty");
-        }
-
-        byte[] content = readContent(file);
-        String sha256 = Sha256.hex(content);
-
-        // Idempotency: the same file uploaded twice by one tenant is the same document.
-        Optional<InvoiceDocument> existing = documents.findByTenantIdAndSha256(tenantId, sha256);
-        if (existing.isPresent()) {
-            log.info("Tenant {} uploaded an already known file, returning document {}",
-                    tenantId, existing.get().getId());
-            return new UploadResult(existing.get(), false);
-        }
-
-        // The original is stored before the database record, so it is never lost.
-        String storageKey = storage.store(tenantId, content);
-        InvoiceDocument document = new InvoiceDocument(
-                tenantId,
-                safeFileName(file.getOriginalFilename()),
-                safeContentType(file.getContentType()),
-                content.length,
-                sha256,
-                storageKey,
-                SourceFormat.UNKNOWN);
-
-        try {
-            InvoiceDocument saved = documents.saveAndFlush(document);
-            log.info("Tenant {} uploaded new document {}", tenantId, saved.getId());
-            return new UploadResult(saved, true);
-        } catch (DataIntegrityViolationException e) {
-            return documents.findByTenantIdAndSha256(tenantId, sha256)
-                    .map(winner -> new UploadResult(winner, false))
-                    .orElseThrow(() -> e);
-        }
+        this.formatDetector = formatDetector;
     }
 
     private static byte[] readContent(MultipartFile file) {
@@ -94,6 +57,7 @@ public class DocumentUploadService {
         }
     }
 
+    // Browsers may send a full path ("C:\\Users\\...\\rechnung.xml"); keep only the file name.
     private static String safeFileName(String originalName) {
         if (originalName == null || originalName.isBlank()) {
             return "unnamed";
@@ -113,5 +77,54 @@ public class DocumentUploadService {
         return contentType.length() > MAX_CONTENT_TYPE_LENGTH
                 ? contentType.substring(0, MAX_CONTENT_TYPE_LENGTH)
                 : contentType;
+    }
+
+    UploadResult upload(UUID tenantId, MultipartFile file) {
+        // Web-specific exceptions for now; replaced by domain exceptions + ProblemDetail in step 11.
+        if (!tenants.existsById(tenantId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown tenant: " + tenantId);
+        }
+        if (file.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Uploaded file is empty");
+        }
+
+        byte[] content = readContent(file);
+        String sha256 = Sha256.hex(content);
+
+        // Idempotency: the same file uploaded twice by one tenant is the same document.
+        Optional<InvoiceDocument> existing = documents.findByTenantIdAndSha256(tenantId, sha256);
+        if (existing.isPresent()) {
+            log.info("Tenant {} uploaded an already known file, returning document {}",
+                    tenantId, existing.get().getId());
+            return new UploadResult(existing.get(), false);
+        }
+
+        DetectedFormat detected = formatDetector.detect(content);
+
+        // The original is stored before the database record, so it is never lost.
+        String storageKey = storage.store(tenantId, content);
+        InvoiceDocument document = new InvoiceDocument(
+                tenantId,
+                safeFileName(file.getOriginalFilename()),
+                safeContentType(file.getContentType()),
+                content.length,
+                sha256,
+                storageKey,
+                detected.format(),
+                detected.profile());
+
+        try {
+            InvoiceDocument saved = documents.saveAndFlush(document);
+            log.info("Tenant {} uploaded new document {} ({}, profile {})",
+                    tenantId, saved.getId(), detected.format(), detected.profile());
+            return new UploadResult(saved, true);
+        } catch (DataIntegrityViolationException e) {
+            // Race condition: a parallel request saved the same file a moment earlier.
+            // The unique constraint in the database caught it; return the winner.
+            // The file stored above becomes an orphan; a cleanup job can remove it later.
+            return documents.findByTenantIdAndSha256(tenantId, sha256)
+                    .map(winner -> new UploadResult(winner, false))
+                    .orElseThrow(() -> e);
+        }
     }
 }

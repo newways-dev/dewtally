@@ -17,6 +17,7 @@ public record DocumentResponse(
         long sizeBytes,
         String sha256,
         SourceFormat sourceFormat,
+        String profile,
         Instant uploadedAt
 ) {
 
@@ -28,6 +29,7 @@ public record DocumentResponse(
                 document.getSizeBytes(),
                 document.getSha256(),
                 document.getSourceFormat(),
+                document.getProfile(),
                 document.getUploadedAt());
     }
 }
