@@ -4,8 +4,16 @@ import com.kate.dewtally.document.InvoiceDocument;
 import com.kate.dewtally.document.InvoiceDocumentRepository;
 import com.kate.dewtally.format.DetectedFormat;
 import com.kate.dewtally.format.FormatDetector;
+import com.kate.dewtally.invoice.ExtractionMethod;
+import com.kate.dewtally.invoice.Invoice;
+import com.kate.dewtally.invoice.InvoiceLine;
+import com.kate.dewtally.invoice.InvoiceService;
+import com.kate.dewtally.parsing.InvoiceParser;
+import com.kate.dewtally.parsing.ParsedInvoice;
+import com.kate.dewtally.parsing.ParsedLine;
 import com.kate.dewtally.storage.DocumentStorage;
 import com.kate.dewtally.tenant.TenantRepository;
+import com.kate.dewtally.xml.InvalidXmlException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -16,15 +24,17 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 /**
  * Accepts an uploaded file: hashes it, skips files the tenant already uploaded,
- * detects its format, stores the original and records it as an invoice document.
+ * detects its format, stores the original, records it as an invoice document
+ * and, for structured e-invoices, creates the invoice from its data.
  * <p>
  * Deliberately not @Transactional: storing a file is not part of a database transaction,
- * and the database write below runs in its own short transaction.
+ * and each database write below runs in its own short transaction.
  */
 @Service
 public class DocumentUploadService {
@@ -38,15 +48,32 @@ public class DocumentUploadService {
     private final InvoiceDocumentRepository documents;
     private final DocumentStorage storage;
     private final FormatDetector formatDetector;
+    private final InvoiceParser invoiceParser;
+    private final InvoiceService invoiceService;
 
     public DocumentUploadService(TenantRepository tenants,
                                  InvoiceDocumentRepository documents,
                                  DocumentStorage storage,
-                                 FormatDetector formatDetector) {
+                                 FormatDetector formatDetector,
+                                 InvoiceParser invoiceParser,
+                                 InvoiceService invoiceService) {
         this.tenants = tenants;
         this.documents = documents;
         this.storage = storage;
         this.formatDetector = formatDetector;
+        this.invoiceParser = invoiceParser;
+        this.invoiceService = invoiceService;
+    }
+
+    private static InvoiceLine toInvoiceLine(ParsedLine line) {
+        return new InvoiceLine(
+                line.lineNo(),
+                line.description(),
+                line.quantity(),
+                line.unitCode(),
+                line.unitPrice(),
+                line.netAmount(),
+                line.taxRate());
     }
 
     private static byte[] readContent(MultipartFile file) {
@@ -96,7 +123,7 @@ public class DocumentUploadService {
         if (existing.isPresent()) {
             log.info("Tenant {} uploaded an already known file, returning document {}",
                     tenantId, existing.get().getId());
-            return new UploadResult(existing.get(), false);
+            return alreadyUploaded(existing.get());
         }
 
         DetectedFormat detected = formatDetector.detect(content);
@@ -113,18 +140,55 @@ public class DocumentUploadService {
                 detected.format(),
                 detected.profile());
 
+        InvoiceDocument saved;
         try {
-            InvoiceDocument saved = documents.saveAndFlush(document);
-            log.info("Tenant {} uploaded new document {} ({}, profile {})",
-                    tenantId, saved.getId(), detected.format(), detected.profile());
-            return new UploadResult(saved, true);
+            saved = documents.saveAndFlush(document);
         } catch (DataIntegrityViolationException e) {
             // Race condition: a parallel request saved the same file a moment earlier.
             // The unique constraint in the database caught it; return the winner.
             // The file stored above becomes an orphan; a cleanup job can remove it later.
             return documents.findByTenantIdAndSha256(tenantId, sha256)
-                    .map(winner -> new UploadResult(winner, false))
+                    .map(this::alreadyUploaded)
                     .orElseThrow(() -> e);
         }
+        log.info("Tenant {} uploaded new document {} ({}, profile {})",
+                tenantId, saved.getId(), detected.format(), detected.profile());
+
+        UUID invoiceId = importStructuredInvoice(saved, content);
+        return new UploadResult(saved, true, invoiceId);
+    }
+
+    private UploadResult alreadyUploaded(InvoiceDocument document) {
+        UUID invoiceId = invoiceService.findIdByDocument(document.getTenantId(), document.getId()).orElse(null);
+        return new UploadResult(document, false, invoiceId);
+    }
+
+    // Reads invoice data from structured formats. If the data cannot be read, the document
+    // is still kept (it is the legal original); it simply has no invoice yet.
+    private UUID importStructuredInvoice(InvoiceDocument document, byte[] content) {
+        Optional<ParsedInvoice> parsed;
+        try {
+            parsed = invoiceParser.parse(document.getSourceFormat(), content);
+        } catch (InvalidXmlException | UncheckedIOException e) {
+            log.warn("Could not read invoice data from document {}: {}", document.getId(), e.getMessage());
+            return null;
+        }
+        if (parsed.isEmpty()) {
+            return null; // plain PDF or unknown file: no structured data to read
+        }
+
+        List<InvoiceLine> lines = parsed.get().lines().stream()
+                .map(DocumentUploadService::toInvoiceLine)
+                .toList();
+        Invoice invoice = invoiceService.create(
+                document.getTenantId(),
+                document.getId(),
+                ExtractionMethod.STRUCTURED,
+                parsed.get().data(),
+                lines);
+
+        log.info("Created invoice {} with {} lines from document {}",
+                invoice.getId(), lines.size(), document.getId());
+        return invoice.getId();
     }
 }
