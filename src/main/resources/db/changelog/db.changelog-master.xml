@@ -8,5 +8,6 @@
     <include file="changes/001-init.xml" relativeToChangelogFile="true"/>
     <include file="changes/002-use-varchar-instead-of-char.xml" relativeToChangelogFile="true"/>
     <include file="changes/003-split-source-format-and-profile.xml" relativeToChangelogFile="true"/>
+    <include file="db/changelog/changes/004-add-extraction-confidence.xml"/>
 
 </databaseChangeLog>

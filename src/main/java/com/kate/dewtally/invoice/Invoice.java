@@ -18,76 +18,59 @@ import java.util.UUID;
 @Table(name = "invoice")
 public class Invoice {
 
+    @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("lineNo ASC")
+    private final List<InvoiceLine> lines = new ArrayList<>();
+    @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true)
+    private final List<ValidationIssue> issues = new ArrayList<>();
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
-
     @Column(name = "tenant_id", nullable = false, updatable = false)
     private UUID tenantId;
-
     // Plain id instead of a JPA relation: documents and invoices are separate modules.
     @Column(name = "document_id", nullable = false, updatable = false)
     private UUID documentId;
-
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)
     private InvoiceStatus status;
-
     @Enumerated(EnumType.STRING)
     @Column(name = "extraction_method", nullable = false, length = 20)
     private ExtractionMethod extractionMethod;
-
+    // The language model's own estimate (0.00 - 1.00); null if no model was involved.
+    @Column(name = "extraction_confidence", precision = 3, scale = 2)
+    private BigDecimal extractionConfidence;
     @Column(name = "invoice_number", length = 100)
     private String invoiceNumber;
-
     @Column(name = "issue_date")
     private LocalDate issueDate;
-
     @Column(name = "due_date")
     private LocalDate dueDate;
-
     @Column(name = "currency", length = 3)
     private String currency;
-
     @Column(name = "supplier_name", length = 300)
     private String supplierName;
-
     @Column(name = "supplier_vat_id", length = 30)
     private String supplierVatId;
-
     @Column(name = "buyer_reference", length = 100)
     private String buyerReference;
-
     @Column(name = "iban", length = 34)
     private String iban;
-
     // Money is always BigDecimal, never double.
     @Column(name = "net_amount", precision = 15, scale = 2)
     private BigDecimal netAmount;
-
     @Column(name = "tax_amount", precision = 15, scale = 2)
     private BigDecimal taxAmount;
-
     @Column(name = "gross_amount", precision = 15, scale = 2)
     private BigDecimal grossAmount;
-
     // Optimistic locking: two reviewers cannot silently overwrite each other's changes.
     @Version
     @Column(name = "version", nullable = false)
     private Long version;
-
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
-
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
-
-    @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true)
-    @OrderBy("lineNo ASC")
-    private List<InvoiceLine> lines = new ArrayList<>();
-
-    @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<ValidationIssue> issues = new ArrayList<>();
 
     protected Invoice() {
         // Required by JPA.
@@ -110,9 +93,16 @@ public class Invoice {
         issues.add(new ValidationIssue(this, severity, ruleId, message));
     }
 
+    // Package-private: set by InvoiceService when the invoice is created from a model's answer.
+    void recordExtractionConfidence(BigDecimal confidence) {
+        this.extractionConfidence = confidence;
+    }
+
     /**
      * Sets the status from the collected issues. Called once, after validation:
      * any ERROR makes the invoice INVALID, otherwise any WARNING sends it to review.
+     * Exception: data read by a language model may itself be wrong. An error then may be
+     * our extraction mistake, not the supplier's, so a person decides instead of rejecting it.
      */
     public void applyValidationResult() {
         if (status != InvoiceStatus.RECEIVED) {
@@ -124,7 +114,7 @@ public class Invoice {
         boolean hasWarning = issues.stream().anyMatch(issue -> issue.getSeverity() == Severity.WARNING);
 
         if (hasError) {
-            status = InvoiceStatus.INVALID;
+            status = extractionMethod == ExtractionMethod.LLM ? InvoiceStatus.NEEDS_REVIEW : InvoiceStatus.INVALID;
         } else if (hasWarning) {
             status = InvoiceStatus.NEEDS_REVIEW;
         } else {
@@ -176,6 +166,10 @@ public class Invoice {
 
     public ExtractionMethod getExtractionMethod() {
         return extractionMethod;
+    }
+
+    public BigDecimal getExtractionConfidence() {
+        return extractionConfidence;
     }
 
     public String getInvoiceNumber() {
