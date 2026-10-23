@@ -20,4 +20,8 @@ public record InvoiceData(
         BigDecimal taxAmount,
         BigDecimal grossAmount
 ) {
+    
+    public static InvoiceData empty() {
+        return new InvoiceData(null, null, null, null, null, null, null, null, null, null, null);
+    }
 }
