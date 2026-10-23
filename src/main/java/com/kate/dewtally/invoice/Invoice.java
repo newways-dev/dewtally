@@ -5,19 +5,19 @@ import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 /**
  * An invoice as it was issued (a snapshot, not a link to supplier master data).
- * Aggregate root: lines and validation issues are only changed through this class.
+ * Aggregate root: lines, validation issues and status are only changed through this class.
  */
 @Entity
 @Table(name = "invoice")
 public class Invoice {
 
+    // A decision (accept/reject) or a correction is only possible while the invoice is still open.
+    private static final Set<InvoiceStatus> OPEN = Set.of(
+            InvoiceStatus.VALID, InvoiceStatus.INVALID, InvoiceStatus.NEEDS_REVIEW);
     @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("lineNo ASC")
     private final List<InvoiceLine> lines = new ArrayList<>();
@@ -84,6 +84,27 @@ public class Invoice {
         applyData(data);
     }
 
+    private static void track(List<FieldChange> changes, String field, Object oldValue, Object newValue) {
+        if (!same(oldValue, newValue)) {
+            changes.add(new FieldChange(field, format(oldValue), format(newValue)));
+        }
+    }
+
+    // 1200.00 and 1200 are the same amount, even though BigDecimal.equals says otherwise.
+    private static boolean same(Object a, Object b) {
+        if (a instanceof BigDecimal x && b instanceof BigDecimal y) {
+            return x.compareTo(y) == 0;
+        }
+        return Objects.equals(a, b);
+    }
+
+    private static String format(Object value) {
+        if (value == null) {
+            return null;
+        }
+        return value instanceof BigDecimal amount ? amount.toPlainString() : value.toString();
+    }
+
     public void addLine(InvoiceLine line) {
         line.attachTo(this);
         lines.add(line);
@@ -101,6 +122,7 @@ public class Invoice {
     /**
      * Sets the status from the collected issues. Called once, after validation:
      * any ERROR makes the invoice INVALID, otherwise any WARNING sends it to review.
+     * <p>
      * Exception: data read by a language model may itself be wrong. An error then may be
      * our extraction mistake, not the supplier's, so a person decides instead of rejecting it.
      */
@@ -120,6 +142,99 @@ public class Invoice {
         } else {
             status = InvoiceStatus.VALID;
         }
+    }
+
+    /**
+     * A person replaces the invoice data. Returns every value that actually changed, for the audit trail.
+     * If anything changed, the data counts as entered by a person (MANUAL), old issues are removed
+     * and the invoice is back in RECEIVED, ready to be validated again.
+     */
+    public List<FieldChange> correct(InvoiceData data, List<InvoiceLineData> newLines) {
+        requireOpen("corrected");
+
+        List<FieldChange> changes = new ArrayList<>();
+        track(changes, "invoiceNumber", invoiceNumber, data.invoiceNumber());
+        track(changes, "issueDate", issueDate, data.issueDate());
+        track(changes, "dueDate", dueDate, data.dueDate());
+        track(changes, "currency", currency, data.currency());
+        track(changes, "supplierName", supplierName, data.supplierName());
+        track(changes, "supplierVatId", supplierVatId, data.supplierVatId());
+        track(changes, "buyerReference", buyerReference, data.buyerReference());
+        track(changes, "iban", iban, data.iban());
+        track(changes, "netAmount", netAmount, data.netAmount());
+        track(changes, "taxAmount", taxAmount, data.taxAmount());
+        track(changes, "grossAmount", grossAmount, data.grossAmount());
+        changes.addAll(correctLines(newLines));
+
+        if (changes.isEmpty()) {
+            return changes;
+        }
+
+        applyData(data);
+        if (extractionMethod != ExtractionMethod.MANUAL) {
+            changes.add(new FieldChange("extractionMethod", extractionMethod.name(), ExtractionMethod.MANUAL.name()));
+            extractionMethod = ExtractionMethod.MANUAL;
+        }
+        issues.clear();
+        status = InvoiceStatus.RECEIVED;
+        return changes;
+    }
+
+    /**
+     * A reviewer confirms the invoice may be paid. Not possible while it has errors.
+     */
+    public void accept() {
+        if (status != InvoiceStatus.VALID && status != InvoiceStatus.NEEDS_REVIEW) {
+            throw new InvoiceStateException("Only VALID or NEEDS_REVIEW invoices can be accepted, status is " + status);
+        }
+        status = InvoiceStatus.ACCEPTED;
+    }
+
+    /**
+     * A reviewer decides the invoice must not be paid (e.g. wrong, duplicate, not ours).
+     */
+    public void reject() {
+        requireOpen("rejected");
+        status = InvoiceStatus.REJECTED;
+    }
+
+    private void requireOpen(String action) {
+        if (!OPEN.contains(status)) {
+            throw new InvoiceStateException("Invoice in status " + status + " cannot be " + action);
+        }
+    }
+
+    // Lines are updated in place by position; extra lines are added or removed at the end.
+    private List<FieldChange> correctLines(List<InvoiceLineData> newLines) {
+        List<FieldChange> changes = new ArrayList<>();
+        int common = Math.min(lines.size(), newLines.size());
+
+        for (int i = 0; i < common; i++) {
+            InvoiceLine line = lines.get(i);
+            InvoiceLineData data = newLines.get(i);
+            String prefix = "lines[" + line.getLineNo() + "].";
+            track(changes, prefix + "description", line.getDescription(), data.description());
+            track(changes, prefix + "quantity", line.getQuantity(), data.quantity());
+            track(changes, prefix + "unitCode", line.getUnitCode(), data.unitCode());
+            track(changes, prefix + "unitPrice", line.getUnitPrice(), data.unitPrice());
+            track(changes, prefix + "netAmount", line.getNetAmount(), data.netAmount());
+            track(changes, prefix + "taxRate", line.getTaxRate(), data.taxRate());
+            line.update(data);
+        }
+
+        for (int i = lines.size() - 1; i >= newLines.size(); i--) {
+            InvoiceLine removed = lines.remove(i);
+            changes.add(new FieldChange("lines[" + removed.getLineNo() + "]", "removed line", null));
+        }
+
+        int nextLineNo = lines.stream().mapToInt(InvoiceLine::getLineNo).max().orElse(0) + 1;
+        for (int i = common; i < newLines.size(); i++) {
+            InvoiceLineData data = newLines.get(i);
+            addLine(data.toLine(nextLineNo));
+            changes.add(new FieldChange("lines[" + nextLineNo + "]", null, data.summary()));
+            nextLineNo++;
+        }
+        return changes;
     }
 
     private void applyData(InvoiceData data) {

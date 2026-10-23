@@ -8,10 +8,12 @@ import java.util.UUID;
 
 /**
  * Full view of one invoice: header data, lines and validation issues.
+ * The version must be sent back with a correction (optimistic locking).
  */
 public record InvoiceDetailsResponse(
         UUID id,
         UUID documentId,
+        Long version,
         InvoiceStatus status,
         ExtractionMethod extractionMethod,
         BigDecimal extractionConfidence,
@@ -32,10 +34,11 @@ public record InvoiceDetailsResponse(
 ) {
 
     // Must be called inside a transaction: lines and issues are loaded lazily.
-    static InvoiceDetailsResponse from(Invoice invoice) {
+    public static InvoiceDetailsResponse from(Invoice invoice) {
         return new InvoiceDetailsResponse(
                 invoice.getId(),
                 invoice.getDocumentId(),
+                invoice.getVersion(),
                 invoice.getStatus(),
                 invoice.getExtractionMethod(),
                 invoice.getExtractionConfidence(),
