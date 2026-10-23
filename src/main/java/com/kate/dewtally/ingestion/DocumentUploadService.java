@@ -189,7 +189,7 @@ public class DocumentUploadService {
                 lines);
 
         InvoiceStatus status = validationService.validate(
-                document.getTenantId(), invoice.getId(), document.getSourceFormat(), document.getProfile());
+                document.getTenantId(), invoice.getId(), document.getSourceFormat(), document.getProfile(), content);
 
         log.info("Created invoice {} with {} lines from document {}, status {}",
                 invoice.getId(), lines.size(), document.getId(), status);
