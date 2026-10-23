@@ -1,5 +1,7 @@
 package com.kate.dewtally.invoice;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -10,12 +12,15 @@ import java.util.UUID;
 
 public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
 
-    // Always scoped by tenant: a tenant must never be able to read another tenant's invoice.
     Optional<Invoice> findByIdAndTenantId(UUID id, UUID tenantId);
 
     Optional<Invoice> findByTenantIdAndDocumentId(UUID tenantId, UUID documentId);
 
     List<Invoice> findByTenantIdAndStatus(UUID tenantId, InvoiceStatus status);
+    
+    Page<Invoice> findByTenantId(UUID tenantId, Pageable pageable);
+
+    Page<Invoice> findByTenantIdAndStatus(UUID tenantId, InvoiceStatus status, Pageable pageable);
 
     @Query("""
             SELECT CASE WHEN COUNT(i) > 0 THEN true ELSE false END
@@ -30,9 +35,6 @@ public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
                                @Param("invoiceNumber") String invoiceNumber,
                                @Param("excludedId") UUID excludedId);
 
-    /**
-     * Same check for invoices without a supplier VAT ID: compares the supplier name instead.
-     */
     @Query("""
             SELECT CASE WHEN COUNT(i) > 0 THEN true ELSE false END
             FROM Invoice i
