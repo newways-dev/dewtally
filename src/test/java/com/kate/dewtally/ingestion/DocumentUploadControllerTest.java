@@ -31,7 +31,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Calls the real HTTP endpoint (without a network) against a real PostgreSQL.
  * Uploaded files go to target/, which "mvn clean" removes.
  */
-@SpringBootTest(properties = "dewtally.storage.local-root=target/test-documents")
+@SpringBootTest(properties = {
+        "dewtally.storage.local-root=target/test-documents",
+        "dewtally.validation.kosit.enabled=false"
+})
 @Import(TestcontainersConfiguration.class)
 @Transactional
 class DocumentUploadControllerTest {

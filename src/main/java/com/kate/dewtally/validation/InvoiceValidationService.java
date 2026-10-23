@@ -9,7 +9,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -25,25 +27,35 @@ public class InvoiceValidationService {
     private final InvoiceRepository invoices;
     private final List<InvoiceRule> rules;
 
+    // Spring injects every bean that implements InvoiceRule, sorted by @Order
+    // (rules without @Order come first, KositRule last).
     public InvoiceValidationService(InvoiceRepository invoices, List<InvoiceRule> rules) {
         this.invoices = invoices;
         this.rules = rules;
     }
 
     @Transactional
-    public InvoiceStatus validate(UUID tenantId, UUID invoiceId, SourceFormat sourceFormat, String profile) {
+    public InvoiceStatus validate(UUID tenantId,
+                                  UUID invoiceId,
+                                  SourceFormat sourceFormat,
+                                  String profile,
+                                  byte[] content) {
         Invoice invoice = invoices.findByIdAndTenantId(invoiceId, tenantId)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Invoice " + invoiceId + " not found for tenant " + tenantId));
 
-        ValidationContext context = new ValidationContext(invoice, sourceFormat, profile);
+        ValidationContext context = new ValidationContext(invoice, sourceFormat, profile, content);
 
         // First collect all findings, then change the invoice: rules always see the original state.
-        List<Finding> findings = rules.stream()
-                .flatMap(rule -> rule.check(context).stream())
-                .toList();
+        // One finding per rule id: if our own rule and KoSIT report the same rule, ours is kept.
+        Map<String, Finding> findings = new LinkedHashMap<>();
+        for (InvoiceRule rule : rules) {
+            for (Finding finding : rule.check(context)) {
+                findings.putIfAbsent(finding.ruleId(), finding);
+            }
+        }
 
-        findings.forEach(finding -> invoice.addIssue(finding.severity(), finding.ruleId(), finding.message()));
+        findings.values().forEach(finding -> invoice.addIssue(finding.severity(), finding.ruleId(), finding.message()));
         invoice.applyValidationResult();
 
         log.info("Validated invoice {}: {} ({} findings)", invoiceId, invoice.getStatus(), findings.size());
