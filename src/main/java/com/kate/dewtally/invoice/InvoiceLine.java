@@ -67,6 +67,17 @@ public class InvoiceLine {
         this.invoice = invoice;
     }
 
+    // Package-private: only Invoice.correct() may change a line.
+    // The line is updated in place (not replaced), so its line number stays unique at all times.
+    void update(InvoiceLineData data) {
+        this.description = data.description();
+        this.quantity = data.quantity();
+        this.unitCode = data.unitCode();
+        this.unitPrice = data.unitPrice();
+        this.netAmount = data.netAmount();
+        this.taxRate = data.taxRate();
+    }
+
     public UUID getId() {
         return id;
     }

@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- New status REJECTED: a reviewer decided the invoice must not be paid. -->
+    <changeSet id="009-add-status-rejected" author="kate">
+        <sql>
+            ALTER TABLE invoice DROP CONSTRAINT ck_invoice_status;
+            ALTER TABLE invoice
+                ADD CONSTRAINT ck_invoice_status
+                    CHECK (status IN
+                           ('RECEIVED', 'VALID', 'INVALID', 'NEEDS_REVIEW', 'ACCEPTED', 'REJECTED', 'EXPORTED'));
+        </sql>
+        <rollback>
+            <sql>
+                ALTER TABLE invoice DROP CONSTRAINT ck_invoice_status;
+                ALTER TABLE invoice ADD CONSTRAINT ck_invoice_status
+                CHECK (status IN ('RECEIVED', 'VALID', 'INVALID', 'NEEDS_REVIEW', 'ACCEPTED', 'EXPORTED'));
+            </sql>
+        </rollback>
+    </changeSet>
+
+    <!-- Audit trail of an invoice: every correction (field, old value, new value) and every decision.
+         Rows are only ever inserted, never updated. -->
+    <changeSet id="010-create-invoice-change" author="kate">
+        <createTable tableName="invoice_change"
+                     remarks="Who changed what on an invoice and when (corrections and review decisions)">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" primaryKeyName="pk_invoice_change"/>
+            </column>
+            <column name="tenant_id" type="UUID">
+                <constraints nullable="false"
+                             foreignKeyName="fk_invoice_change_tenant" references="tenant(id)"/>
+            </column>
+            <!-- Cascade only so local test data can be cleaned up; in production invoices are never deleted (GoBD). -->
+            <column name="invoice_id" type="UUID">
+                <constraints nullable="false"
+                             foreignKeyName="fk_invoice_change_invoice" references="invoice(id)"
+                             deleteCascade="true"/>
+            </column>
+            <column name="change_type" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="field" type="VARCHAR(100)"/>
+            <column name="old_value" type="VARCHAR(2000)"/>
+            <column name="new_value" type="VARCHAR(2000)"/>
+            <column name="comment" type="VARCHAR(2000)"/>
+            <column name="changed_by" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="changed_at" type="TIMESTAMP WITH TIME ZONE">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <sql>
+            ALTER TABLE invoice_change
+                ADD CONSTRAINT ck_invoice_change_type
+                    CHECK (change_type IN ('CORRECTION', 'ACCEPTED', 'REJECTED'));
+        </sql>
+
+        <createIndex tableName="invoice_change" indexName="ix_invoice_change_invoice">
+            <column name="invoice_id"/>
+            <column name="changed_at"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable tableName="invoice_change"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

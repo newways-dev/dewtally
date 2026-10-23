@@ -1,6 +1,7 @@
 package com.kate.dewtally.invoice;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -10,7 +11,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Public entry point of the invoice module. Other modules create and look up invoices
+ * Public entry point of the invoice module. Other modules create, look up and change invoices
  * through this service instead of using the repository directly.
  */
 @Service
@@ -68,6 +69,26 @@ public class InvoiceService {
         invoice.addIssue(Severity.WARNING, ruleId, message);
         invoice.applyValidationResult();
         return invoices.save(invoice);
+    }
+
+    /**
+     * Loads an invoice that the caller is about to change. Must run inside the caller's transaction,
+     * so the returned entity stays managed and the change is saved on commit.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<Invoice> loadForChange(UUID tenantId, UUID invoiceId) {
+        return invoices.findForChange(invoiceId, tenantId);
+    }
+
+    // Writes pending changes now, so the returned version number is already the new one.
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void flush() {
+        invoices.flush();
+    }
+
+    @Transactional(readOnly = true)
+    public boolean exists(UUID tenantId, UUID invoiceId) {
+        return invoices.existsByIdAndTenantId(invoiceId, tenantId);
     }
 
     @Transactional(readOnly = true)
