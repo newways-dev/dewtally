@@ -6,16 +6,17 @@ import com.kate.dewtally.document.SourceFormat;
 import com.kate.dewtally.extraction.*;
 import com.kate.dewtally.format.DetectedFormat;
 import com.kate.dewtally.format.FormatDetector;
-import com.kate.dewtally.invoice.*;
+import com.kate.dewtally.invoice.Invoice;
+import com.kate.dewtally.invoice.InvoiceService;
 import com.kate.dewtally.parsing.InvoiceParser;
 import com.kate.dewtally.parsing.ParsedInvoice;
-import com.kate.dewtally.parsing.ParsedLine;
 import com.kate.dewtally.storage.DocumentStorage;
 import com.kate.dewtally.tenant.TenantRepository;
-import com.kate.dewtally.validation.InvoiceValidationService;
 import com.kate.dewtally.xml.InvalidXmlException;
+import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -24,7 +25,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.util.List;
+import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -32,10 +33,10 @@ import java.util.UUID;
  * Accepts an uploaded file: hashes it, skips files the tenant already uploaded,
  * detects its format, stores the original, records it as an invoice document and
  * creates the invoice: from the XML for structured e-invoices, with a language model for plain PDFs.
- * <p>
  * Deliberately not @Transactional: storing a file is not part of a database transaction,
  * and the model call takes seconds, during which no database connection should be held.
- * Each database write below runs in its own short transaction.
+ * If processing fails, the document (the legal original) is still kept. Uploading the same file
+ * again processes it again, so no document stays without an invoice.
  */
 @Service
 public class DocumentUploadService {
@@ -53,7 +54,10 @@ public class DocumentUploadService {
     private final PdfTextExtractor pdfTextExtractor;
     private final LlmInvoiceExtractor llmExtractor;
     private final InvoiceService invoiceService;
-    private final InvoiceValidationService validationService;
+    private final InvoiceImporter importer;
+    private final Duration pdfTimeout;
+    // PDF parsing runs on untrusted files in its own small pool, separate from everything else.
+    private final Bulkhead pdfBulkhead;
 
     public DocumentUploadService(TenantRepository tenants,
                                  InvoiceDocumentRepository documents,
@@ -63,7 +67,10 @@ public class DocumentUploadService {
                                  PdfTextExtractor pdfTextExtractor,
                                  LlmInvoiceExtractor llmExtractor,
                                  InvoiceService invoiceService,
-                                 InvoiceValidationService validationService) {
+                                 InvoiceImporter importer,
+                                 @Value("${dewtally.extraction.pdf-timeout:20s}") Duration pdfTimeout,
+                                 @Value("${dewtally.extraction.pdf-max-concurrent:2}") int pdfMaxConcurrent,
+                                 @Value("${dewtally.extraction.pdf-max-queued:10}") int pdfMaxQueued) {
         this.tenants = tenants;
         this.documents = documents;
         this.storage = storage;
@@ -72,24 +79,9 @@ public class DocumentUploadService {
         this.pdfTextExtractor = pdfTextExtractor;
         this.llmExtractor = llmExtractor;
         this.invoiceService = invoiceService;
-        this.validationService = validationService;
-    }
-
-    private static List<InvoiceLine> toInvoiceLines(ParsedInvoice parsed) {
-        return parsed.lines().stream()
-                .map(DocumentUploadService::toInvoiceLine)
-                .toList();
-    }
-
-    private static InvoiceLine toInvoiceLine(ParsedLine line) {
-        return new InvoiceLine(
-                line.lineNo(),
-                line.description(),
-                line.quantity(),
-                line.unitCode(),
-                line.unitPrice(),
-                line.netAmount(),
-                line.taxRate());
+        this.importer = importer;
+        this.pdfTimeout = pdfTimeout;
+        this.pdfBulkhead = new Bulkhead("pdf-parsing", pdfMaxConcurrent, pdfMaxQueued);
     }
 
     private static byte[] readContent(MultipartFile file) {
@@ -122,6 +114,11 @@ public class DocumentUploadService {
                 : contentType;
     }
 
+    @PreDestroy
+    void shutdown() {
+        pdfBulkhead.close();
+    }
+
     UploadResult upload(UUID tenantId, MultipartFile file) {
         if (!tenants.existsById(tenantId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown tenant: " + tenantId);
@@ -138,7 +135,7 @@ public class DocumentUploadService {
         if (existing.isPresent()) {
             log.info("Tenant {} uploaded an already known file, returning document {}",
                     tenantId, existing.get().getId());
-            return alreadyUploaded(existing.get());
+            return alreadyUploaded(existing.get(), content);
         }
 
         DetectedFormat detected = formatDetector.detect(content);
@@ -163,25 +160,40 @@ public class DocumentUploadService {
             // The unique constraint in the database caught it; return the winner.
             // The file stored above becomes an orphan; a cleanup job can remove it later.
             return documents.findByTenantIdAndSha256(tenantId, sha256)
-                    .map(this::alreadyUploaded)
+                    .map(winner -> alreadyUploaded(winner, content))
                     .orElseThrow(() -> e);
         }
         log.info("Tenant {} uploaded new document {} ({}, profile {})",
                 tenantId, saved.getId(), detected.format(), detected.profile());
 
-        UUID invoiceId = saved.getSourceFormat() == SourceFormat.PDF
-                ? importPdfInvoice(saved, content)
-                : importStructuredInvoice(saved, content);
-        return new UploadResult(saved, true, invoiceId);
+        return new UploadResult(saved, true, processDocument(saved, content));
     }
 
-    private UploadResult alreadyUploaded(InvoiceDocument document) {
-        UUID invoiceId = invoiceService.findIdByDocument(document.getTenantId(), document.getId()).orElse(null);
-        return new UploadResult(document, false, invoiceId);
+    private UploadResult alreadyUploaded(InvoiceDocument document, byte[] content) {
+        Optional<UUID> invoiceId = invoiceService.findIdByDocument(document.getTenantId(), document.getId());
+        if (invoiceId.isPresent()) {
+            return new UploadResult(document, false, invoiceId.get());
+        }
+        // An earlier attempt kept the document but failed before the invoice existed: try again.
+        log.info("Document {} has no invoice yet, processing it again", document.getId());
+        return new UploadResult(document, false, processDocument(document, content));
     }
 
-    // Reads invoice data from structured formats. If the data cannot be read, the document
-    // is still kept (it is the legal original); it simply has no invoice yet.
+    // Never throws: a failure is logged, the document stays, and the next upload retries.
+    private UUID processDocument(InvoiceDocument document, byte[] content) {
+        try {
+            return document.getSourceFormat() == SourceFormat.PDF
+                    ? importPdfInvoice(document, content)
+                    : importStructuredInvoice(document, content);
+        } catch (RuntimeException e) {
+            log.error("Processing of document {} failed; it will be retried on the next upload",
+                    document.getId(), e);
+            // A parallel retry may have succeeded in the meantime.
+            return invoiceService.findIdByDocument(document.getTenantId(), document.getId()).orElse(null);
+        }
+    }
+
+    // Reads invoice data from structured formats. Unreadable XML keeps the document without an invoice.
     private UUID importStructuredInvoice(InvoiceDocument document, byte[] content) {
         Optional<ParsedInvoice> parsed;
         try {
@@ -193,23 +205,21 @@ public class DocumentUploadService {
         if (parsed.isEmpty()) {
             return null; // unknown file: no structured data to read
         }
-
-        Invoice invoice = invoiceService.create(
-                document.getTenantId(),
-                document.getId(),
-                ExtractionMethod.STRUCTURED,
-                parsed.get().data(),
-                toInvoiceLines(parsed.get()));
-        return validate(document, invoice, content);
+        return importer.importStructured(document, parsed.get(), content);
     }
 
     // Plain PDF: text → language model → same rules as for XML.
-    // Whatever goes wrong, an invoice is created and sent to review with the reason.
+    // Whatever goes wrong with the file or the model, an invoice is created and sent to review.
     private UUID importPdfInvoice(InvoiceDocument document, byte[] content) {
         PdfText text;
         try {
-            text = pdfTextExtractor.extract(content);
-        } catch (PdfReadException e) {
+            text = pdfBulkhead.call(() -> pdfTextExtractor.extract(content), pdfTimeout);
+        } catch (BulkheadFullException e) {
+            // Server is busy, not a problem of the file: keep the document, the next upload retries.
+            log.warn("PDF parsing is at capacity, document {} will be processed on the next upload",
+                    document.getId());
+            throw e;
+        } catch (PdfReadException | TimeLimitExceededException e) {
             log.warn("Could not read PDF document {}: {}", document.getId(), e.getMessage());
             return forReview(document, "DT-PDF-UNREADABLE",
                     "Die PDF-Datei konnte nicht gelesen werden. Bitte manuell erfassen.");
@@ -224,27 +234,13 @@ public class DocumentUploadService {
         try {
             extraction = llmExtractor.extract(text.text());
         } catch (RuntimeException e) {
-            // Network, API key, quota, unexpected answer: the cause goes to the log, the invoice to a person.
+            // Network, API key, quota, timeout, unexpected answer: the cause goes to the log, the invoice to a person.
             log.error("LLM extraction failed for document {}", document.getId(), e);
             return forReview(document, "DT-EXTRACTION-FAILED",
                     "Die automatische Erfassung ist fehlgeschlagen. Bitte manuell erfassen.");
         }
 
-        Invoice invoice = invoiceService.createExtracted(
-                document.getTenantId(),
-                document.getId(),
-                extraction.invoice().data(),
-                toInvoiceLines(extraction.invoice()),
-                extraction.confidence());
-        return validate(document, invoice, content);
-    }
-
-    private UUID validate(InvoiceDocument document, Invoice invoice, byte[] content) {
-        InvoiceStatus status = validationService.validate(
-                document.getTenantId(), invoice.getId(), document.getSourceFormat(), document.getProfile(), content);
-        log.info("Created invoice {} ({}) from document {}, status {}",
-                invoice.getId(), invoice.getExtractionMethod(), document.getId(), status);
-        return invoice.getId();
+        return importer.importExtracted(document, extraction, content);
     }
 
     private UUID forReview(InvoiceDocument document, String ruleId, String message) {

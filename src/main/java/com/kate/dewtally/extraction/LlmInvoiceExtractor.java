@@ -4,11 +4,18 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.AdvisorParams;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
+
+/**
+ * Turns the text of a PDF invoice into structured invoice data using a language model.
+ */
 @Component
 public class LlmInvoiceExtractor {
 
+    // No curly braces in this text: Spring AI treats them as template variables.
     static final String SYSTEM_PROMPT = """
             You extract data from invoices, mostly German ones.
             
@@ -32,15 +39,30 @@ public class LlmInvoiceExtractor {
             """;
     private static final Logger log = LoggerFactory.getLogger(LlmInvoiceExtractor.class);
     private final ChatClient chatClient;
+    private final Duration timeout;
 
-    public LlmInvoiceExtractor(ChatClient.Builder chatClientBuilder) {
+    public LlmInvoiceExtractor(ChatClient.Builder chatClientBuilder,
+                               @Value("${dewtally.extraction.llm-timeout:60s}") Duration timeout) {
         this.chatClient = chatClientBuilder.build();
+        this.timeout = timeout;
     }
 
     public InvoiceExtraction extract(String invoiceText) {
         long start = System.currentTimeMillis();
 
-        ExtractedInvoice answer = chatClient.prompt()
+        ExtractedInvoice answer = TimeLimits.call(() -> ask(invoiceText), timeout, "LLM extraction");
+        if (answer == null) {
+            throw new IllegalStateException("The model returned no answer");
+        }
+
+        log.info("Extracted invoice with LLM in {} ms (confidence {})",
+                System.currentTimeMillis() - start, answer.confidence());
+        return new InvoiceExtraction(answer.toParsedInvoice(), answer.confidence());
+    }
+
+    private ExtractedInvoice ask(String invoiceText) {
+        return chatClient.prompt()
+                // Provider-native structured output: OpenAI enforces our JSON schema.
                 .advisors(AdvisorParams.ENABLE_NATIVE_STRUCTURED_OUTPUT)
                 .system(SYSTEM_PROMPT)
                 // The invoice text is passed as a parameter value, so braces inside it are never
@@ -50,13 +72,5 @@ public class LlmInvoiceExtractor {
                         .param("invoice", invoiceText))
                 .call()
                 .entity(ExtractedInvoice.class);
-
-        if (answer == null) {
-            throw new IllegalStateException("The model returned no answer");
-        }
-
-        log.info("Extracted invoice with LLM in {} ms (confidence {})",
-                System.currentTimeMillis() - start, answer.confidence());
-        return new InvoiceExtraction(answer.toParsedInvoice(), answer.confidence());
     }
 }
