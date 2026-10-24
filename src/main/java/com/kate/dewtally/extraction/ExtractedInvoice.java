@@ -1,5 +1,6 @@
 package com.kate.dewtally.extraction;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import com.kate.dewtally.invoice.InvoiceData;
 import com.kate.dewtally.parsing.ParsedInvoice;
@@ -42,11 +43,33 @@ public record ExtractedInvoice(
         String taxAmount,
         @JsonPropertyDescription("Total gross amount (Brutto/Gesamtbetrag) as plain number with dot, e.g. 1428.00")
         String grossAmount,
+        @JsonPropertyDescription("Total of discounts on the whole invoice that are not invoice lines "
+                + "(Rabatt, Nachlass), positive plain number with dot; empty if none. Skonto is not a discount here")
+        String allowanceTotal,
+        @JsonPropertyDescription("Total of surcharges on the whole invoice that are not invoice lines "
+                + "(Versandkosten, Fracht, Verpackung), positive plain number with dot; empty if none")
+        String chargeTotal,
         @JsonPropertyDescription("Invoice lines in the order they appear")
         List<Line> lines,
         @JsonPropertyDescription("Your confidence from 0.0 to 1.0 that all fields above are correct")
         double confidence
 ) {
+
+    // Tells Jackson to use this (canonical) constructor for JSON, not the short one below.
+    @JsonCreator
+    public ExtractedInvoice {
+    }
+
+    /**
+     * Answer without document-level allowances and charges (used by tests).
+     */
+    public ExtractedInvoice(String invoiceNumber, String issueDate, String dueDate, String currency,
+                            String supplierName, String supplierVatId, String buyerReference, String iban,
+                            String netAmount, String taxAmount, String grossAmount,
+                            List<Line> lines, double confidence) {
+        this(invoiceNumber, issueDate, dueDate, currency, supplierName, supplierVatId, buyerReference, iban,
+                netAmount, taxAmount, grossAmount, "", "", lines, confidence);
+    }
 
     static String text(String value, int maxLength) {
         if (value == null || value.isBlank()) {
@@ -96,6 +119,12 @@ public record ExtractedInvoice(
         return new BigDecimal(cleaned);
     }
 
+    // Allowances and charges are positive by definition: a discount printed as "-268.28" means 268.28.
+    static BigDecimal positiveAmount(String value) {
+        BigDecimal amount = amount(value);
+        return amount == null ? null : amount.abs();
+    }
+
     /**
      * Converts the model's answer into the same structure the XML parsers produce.
      */
@@ -111,7 +140,9 @@ public record ExtractedInvoice(
                 compact(iban, 34),
                 amount(netAmount),
                 amount(taxAmount),
-                amount(grossAmount));
+                amount(grossAmount),
+                positiveAmount(allowanceTotal),
+                positiveAmount(chargeTotal));
 
         List<ParsedLine> parsedLines = new ArrayList<>();
         int lineNo = 1;

@@ -7,8 +7,16 @@ import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 import java.util.List;
 
+/**
+ * EN 16931 BR-CO-13: net total = sum of line net amounts − document allowances + document charges.
+ * A warning, not an error: for PDFs the lines were read by a model and may be incomplete.
+ */
 @Component
 public class LineSumRule implements InvoiceRule {
+
+    private static BigDecimal orZero(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
+    }
 
     @Override
     public List<Finding> check(ValidationContext context) {
@@ -25,11 +33,15 @@ public class LineSumRule implements InvoiceRule {
             sum = sum.add(line.getNetAmount());
         }
 
-        if (!Amounts.equalInCents(sum, invoice.getNetAmount())) {
+        BigDecimal allowances = orZero(invoice.getAllowanceTotal());
+        BigDecimal charges = orZero(invoice.getChargeTotal());
+        BigDecimal expected = sum.subtract(allowances).add(charges);
+
+        if (!Amounts.equalInCents(expected, invoice.getNetAmount())) {
             return List.of(Finding.warning("DT-LINE-SUM-MISMATCH",
-                    "Summe der Positionen (%s) weicht vom Nettobetrag (%s) ab. "
-                            .formatted(sum.toPlainString(), invoice.getNetAmount().toPlainString())
-                            + "Möglicherweise gibt es Zu- oder Abschläge auf Belegebene."));
+                    "Summe der Positionen (%s) − Abschläge (%s) + Zuschläge (%s) = %s weicht vom Nettobetrag (%s) ab."
+                            .formatted(sum.toPlainString(), allowances.toPlainString(), charges.toPlainString(),
+                                    expected.toPlainString(), invoice.getNetAmount().toPlainString())));
         }
         return List.of();
     }

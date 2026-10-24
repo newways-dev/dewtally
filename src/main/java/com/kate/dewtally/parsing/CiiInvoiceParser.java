@@ -4,6 +4,7 @@ import com.kate.dewtally.invoice.InvoiceData;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -20,6 +21,10 @@ final class CiiInvoiceParser {
     private static final String AGREEMENT = TRADE + "ram:ApplicableHeaderTradeAgreement/";
     private static final String SETTLEMENT = TRADE + "ram:ApplicableHeaderTradeSettlement/";
     private static final String TOTALS = SETTLEMENT + "ram:SpecifiedTradeSettlementHeaderMonetarySummation/";
+    // Document-level entries only; line-level ones live inside each line and are already in its net amount.
+    private static final String ALLOWANCE_CHARGE = SETTLEMENT + "ram:SpecifiedTradeAllowanceCharge";
+    private static final String INDICATOR = "ram:ChargeIndicator/udt:Indicator";
+    private static final String AMOUNT = "ram:ActualAmount";
 
     private static List<ParsedLine> lines(XPathReader xml, Element root) {
         List<ParsedLine> lines = new ArrayList<>();
@@ -56,6 +61,12 @@ final class CiiInvoiceParser {
         XPathReader xml = new XPathReader();
         Element root = document.getDocumentElement();
 
+        var entries = xml.elements(root, ALLOWANCE_CHARGE);
+        BigDecimal allowances = AllowanceCharges.total(xml,
+                xml.decimal(root, TOTALS + "ram:AllowanceTotalAmount"), entries, INDICATOR, AMOUNT, false);
+        BigDecimal charges = AllowanceCharges.total(xml,
+                xml.decimal(root, TOTALS + "ram:ChargeTotalAmount"), entries, INDICATOR, AMOUNT, true);
+
         InvoiceData data = new InvoiceData(
                 xml.text(root, "rsm:ExchangedDocument/ram:ID", 100),
                 date(xml.text(root, "rsm:ExchangedDocument/ram:IssueDateTime/udt:DateTimeString")),
@@ -71,7 +82,9 @@ final class CiiInvoiceParser {
                         + "ram:SpecifiedTradeSettlementPaymentMeans/ram:PayeePartyCreditorFinancialAccount/ram:IBANID")),
                 xml.decimal(root, TOTALS + "ram:TaxBasisTotalAmount"),
                 xml.decimal(root, TOTALS + "ram:TaxTotalAmount"),
-                xml.decimal(root, TOTALS + "ram:GrandTotalAmount"));
+                xml.decimal(root, TOTALS + "ram:GrandTotalAmount"),
+                allowances,
+                charges);
 
         return new ParsedInvoice(data, lines(xml, root));
     }
