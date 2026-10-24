@@ -42,7 +42,12 @@ public class InvoiceReviewController {
                                          @PathVariable UUID id,
                                          @RequestBody(required = false) DecisionRequest request) {
         String comment = request == null ? null : request.comment();
-        return reviews.accept(tenantId, id, comment, user);
+        boolean ibanConfirmed = request != null && Boolean.TRUE.equals(request.ibanConfirmed());
+        if (ibanConfirmed && (comment == null || comment.isBlank())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Describe how the IBAN was confirmed (who was called, on which known phone number)");
+        }
+        return reviews.accept(tenantId, id, comment, ibanConfirmed, user);
     }
 
     @PostMapping("/reject")

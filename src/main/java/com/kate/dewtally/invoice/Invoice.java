@@ -18,6 +18,8 @@ public class Invoice {
     // A decision (accept/reject) or a correction is only possible while the invoice is still open.
     private static final Set<InvoiceStatus> OPEN = Set.of(
             InvoiceStatus.VALID, InvoiceStatus.INVALID, InvoiceStatus.NEEDS_REVIEW);
+    // Findings so dangerous that accepting needs an explicit confirmation, not just a click.
+    private static final Set<String> HIGH_RISK_RULES = Set.of("DT-IBAN-CHANGED");
     @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("lineNo ASC")
     private final List<InvoiceLine> lines = new ArrayList<>();
@@ -182,10 +184,16 @@ public class Invoice {
 
     /**
      * A reviewer confirms the invoice may be paid. Not possible while it has errors.
+     * With a high-risk finding (changed IBAN) the reviewer must confirm it was checked with the supplier.
      */
-    public void accept() {
+    public void accept(boolean highRiskConfirmed) {
         if (status != InvoiceStatus.VALID && status != InvoiceStatus.NEEDS_REVIEW) {
             throw new InvoiceStateException("Only VALID or NEEDS_REVIEW invoices can be accepted, status is " + status);
+        }
+        boolean highRisk = issues.stream().anyMatch(issue -> HIGH_RISK_RULES.contains(issue.getRuleId()));
+        if (highRisk && !highRiskConfirmed) {
+            throw new InvoiceStateException(
+                    "The bank account differs from the known ones. Confirm it with the supplier before accepting.");
         }
         status = InvoiceStatus.ACCEPTED;
     }

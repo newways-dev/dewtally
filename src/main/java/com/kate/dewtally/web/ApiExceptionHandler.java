@@ -2,6 +2,7 @@ package com.kate.dewtally.web;
 
 import com.kate.dewtally.invoice.InvoiceStateException;
 import com.kate.dewtally.storage.StorageException;
+import com.kate.dewtally.supplier.SupplierStateException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -26,6 +27,12 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     // The action does not fit the invoice's status, e.g. accepting an INVALID invoice.
     @ExceptionHandler(InvoiceStateException.class)
     ProblemDetail handleInvoiceState(InvoiceStateException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
+    }
+
+    // A supplier change that breaks a rule, e.g. verifying your own IBAN.
+    @ExceptionHandler(SupplierStateException.class)
+    ProblemDetail handleSupplierState(SupplierStateException e) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
     }
 
