@@ -126,6 +126,15 @@ public record ExtractedInvoice(
     }
 
     /**
+     * Copy with another IBAN; used to put the real IBAN back after masking.
+     */
+    ExtractedInvoice withIban(String newIban) {
+        return new ExtractedInvoice(invoiceNumber, issueDate, dueDate, currency, supplierName, supplierVatId,
+                buyerReference, newIban, netAmount, taxAmount, grossAmount, allowanceTotal, chargeTotal,
+                lines, confidence);
+    }
+
+    /**
      * Converts the model's answer into the same structure the XML parsers produce.
      */
     public ParsedInvoice toParsedInvoice() {

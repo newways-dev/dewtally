@@ -3,25 +3,32 @@
 **Invoice and e-Rechnung processing with controlled AI.**
 *dewtally — totally relaxed at the office.*
 
-From 2027, German companies must be able to receive electronic invoices (XRechnung, ZUGFeRD), and from 2028 they must
-send them. dewtally takes incoming invoices, reads them, checks them against business rules and the official XRechnung
-rules, and tells you which invoices are fine, which need a human look and which are broken — and why.
+Since 2025, German companies must be able to receive electronic invoices (XRechnung, ZUGFeRD); from 2027 and 2028
+they must also send them. dewtally takes incoming invoices, reads them, checks them against business rules, the
+official XRechnung rules and the company's own supplier master data, and tells you which invoices are fine, which need
+a human look and which are broken — and why.
 
-> Portfolio project, built step by step. Layer 1 (structured e-invoices) is done;
-> AI extraction for plain PDFs is next. See [ROADMAP.md](ROADMAP.md).
+> Portfolio project, built step by step. Layers 1 (structured e-invoices) and 2 (AI extraction and review) are done;
+> measuring AI quality with evals is next. See [ROADMAP.md](ROADMAP.md).
 
 ## What it does today
 
 - **Upload** an invoice file (`POST /api/documents`). Uploads are idempotent: the same file twice is stored once
   (SHA-256 per tenant).
 - **Detect the format**: XRechnung UBL, XRechnung CII, ZUGFeRD / Factur-X (PDF with embedded XML), plain PDF.
-- **Parse** structured invoices into header data and lines.
-- **Validate** in two stages:
-    - dewtally's own business rules: required fields, totals (BR-CO-15), line sum, due date, ZUGFeRD profiles that are
-      not e-invoices, possible duplicates;
-    - the official **KoSIT validator** with the XRechnung configuration (schema, EN 16931 and BR-DE rules).
+- **Parse** structured invoices into header data, lines, allowances and charges.
+- **Read plain PDFs with AI**: a language model extracts the data; the model's own confidence and our rules decide
+  whether a person has to check it.
+- **Validate** in three stages:
+    - dewtally's own business rules: required fields, totals (BR-CO-15), line sum with allowances and charges
+      (BR-CO-13), due date, possible duplicates, extraction confidence;
+    - the official **KoSIT validator** with the XRechnung configuration (schema, EN 16931 and BR-DE rules);
+    - **supplier master data**: unknown or blocked supplier, invalid, unverified or changed IBAN.
 - **Status** per invoice: `VALID`, `NEEDS_REVIEW` (warnings) or `INVALID` (errors), with every finding stored.
-- **Read API**: invoice details with lines and findings, paged list filtered by status.
+- **Review**: correct data, accept or reject an invoice; every change is recorded with who, when and why.
+- **Fraud protection**: new IBANs need a second person to verify them; an invoice with a changed IBAN can only be
+  accepted with an explicit, documented confirmation.
+- **Data protection**: IBANs, e-mails and phone numbers are masked before text is sent to the model.
 - **Errors** in the standard RFC 9457 format (`application/problem+json`).
 - **Multi-tenant from day one**: every table carries `tenant_id`.
 
@@ -33,15 +40,18 @@ flowchart LR
     API --> H[SHA-256<br/>deduplication]
     H --> S[(File storage)]
     H --> F[Format detection]
-    F --> P[Parser<br/>UBL / CII / ZUGFeRD]
-    P --> V[Validation<br/>own rules + KoSIT]
+    F -->|XRechnung / ZUGFeRD| P[Parser<br/>UBL / CII]
+    F -->|plain PDF| X[Text extraction<br/>+ masking]
+    X --> L[Language model]
+    P --> V[Validation<br/>own rules + KoSIT<br/>+ supplier data]
+    L --> V
     V --> DB[(PostgreSQL)]
-    DB --> R[Read API]
+    DB --> R[Read and review API]
 ```
 
 The application is a **modular monolith**: one deployable, packages by feature (`ingestion`, `format`, `parsing`,
-`validation`, `invoice`, `storage`, `tenant`). The boundaries are drawn so that parts can be moved into separate
-services later (AI extraction will run in its own worker).
+`extraction`, `validation`, `invoice`, `review`, `supplier`, `storage`, `tenant`). The boundaries are drawn so that
+parts can be moved into separate services later (AI extraction will run in its own worker).
 
 ## Tech stack
 
@@ -52,21 +62,23 @@ services later (AI extraction will run in its own worker).
 | Persistence          | Spring Data JPA (Hibernate 7)                       |
 | e-invoice validation | KoSIT validator + XRechnung configuration           |
 | PDF                  | Apache PDFBox                                       |
+| AI                   | Spring AI with OpenAI (structured output)           |
 | Tests                | JUnit 5, AssertJ, Mockito, MockMvc, Testcontainers  |
 | CI                   | GitHub Actions (`mvn verify` on every pull request) |
 
 ## Run locally
 
-**Requirements:** JDK 25, Docker Desktop (running).
+**Requirements:** JDK 25, Docker Desktop (running), an OpenAI API key for reading plain PDFs.
 
 ```bash
 git clone https://github.com/<your-user>/dewtally.git
 cd dewtally
+cp .env.example .env          # then put your OPENAI_API_KEY into .env (never commit it)
 ./mvnw spring-boot:run        # Windows: .\mvnw.cmd spring-boot:run
 ```
 
 Docker Compose starts PostgreSQL automatically, Liquibase creates the schema. The XRechnung validator configuration is
-included in `kosit/xrechnung/`.
+included in `kosit/xrechnung/`. Without an API key, structured e-invoices work; plain PDFs go to review.
 
 Create a tenant (there is no login yet; it comes in layer 5):
 
@@ -78,18 +90,32 @@ VALUES ('544cc1a9-416b-4715-ac24-cb559d89e262', 'Demo GmbH', now());
 ## API examples
 
 ```bash
+TENANT=544cc1a9-416b-4715-ac24-cb559d89e262
+
 # Upload an invoice
 curl -F "file=@src/test/resources/invoices/xrechnung-ubl.xml" \
-     -H "X-Tenant-Id: 544cc1a9-416b-4715-ac24-cb559d89e262" \
+     -H "X-Tenant-Id: $TENANT" \
      http://localhost:8080/api/documents
 
 # List invoices that need a human look
-curl -H "X-Tenant-Id: 544cc1a9-416b-4715-ac24-cb559d89e262" \
-     "http://localhost:8080/api/invoices?status=NEEDS_REVIEW"
+curl -H "X-Tenant-Id: $TENANT" "http://localhost:8080/api/invoices?status=NEEDS_REVIEW"
 
 # Invoice details with lines and findings
-curl -H "X-Tenant-Id: 544cc1a9-416b-4715-ac24-cb559d89e262" \
-     http://localhost:8080/api/invoices/<invoice-id>
+curl -H "X-Tenant-Id: $TENANT" http://localhost:8080/api/invoices/$INVOICE_ID
+
+# Add a supplier; its IBAN starts as PENDING
+curl -X POST -H "X-Tenant-Id: $TENANT" -H "X-User-Name: anna" -H "Content-Type: application/json" \
+     -d '{"name":"Muster GmbH","vatId":"DE123456789","iban":"DE89370400440532013000"}' \
+     http://localhost:8080/api/suppliers
+
+# A second person verifies the IBAN (the same person gets 409)
+curl -X POST -H "X-Tenant-Id: $TENANT" -H "X-User-Name: ben" \
+     http://localhost:8080/api/suppliers/$SUPPLIER_ID/ibans/DE89370400440532013000/verify
+
+# Accept an invoice; with a changed IBAN only with confirmation and a comment
+curl -X POST -H "X-Tenant-Id: $TENANT" -H "X-User-Name: anna" -H "Content-Type: application/json" \
+     -d '{"ibanConfirmed":true,"comment":"Confirmed by phone with Mr Muster on a known number"}' \
+     http://localhost:8080/api/invoices/$INVOICE_ID/accept
 ```
 
 ## Tests
@@ -99,11 +125,19 @@ curl -H "X-Tenant-Id: 544cc1a9-416b-4715-ac24-cb559d89e262" \
 ```
 
 Integration tests run against a real PostgreSQL in Docker (Testcontainers), so Docker must be running.
+Tests that call the real model are skipped unless started with `-Dai=true`.
 
 ## Design decisions
 
 - **Official validator instead of re-implementing XRechnung rules.** Hundreds of rules, updated regularly. Own rules
-  cover business checks the standard does not (duplicates, plausible due dates).
+  cover business checks the standard does not (duplicates, plausible due dates, supplier data).
+- **AI under control.** The model only reads; it never decides. Its answer is checked by the same rules as a
+  structured invoice, uncertain answers go to a person, and model errors never reject an invoice.
+- **Master data beats AI for fraud.** A fake invoice can be perfectly well-formed. Known suppliers, four-eyes IBAN
+  verification and a hard stop on changed IBANs protect against payment fraud; the IBAN always comes from the
+  document, never from the model.
+- **Data minimisation.** Values the model does not need are masked before the text leaves the system
+  ([ADR 0001](docs/adr/0001-llm-data-protection.md)).
 - **Liquibase with XML changelogs; Hibernate only validates the schema.** Database changes are explicit and reviewable.
 - **Idempotent upload.** A unique constraint on `(tenant_id, sha256)` makes double uploads harmless, even when they
   race.
@@ -113,7 +147,7 @@ Integration tests run against a real PostgreSQL in Docker (Testcontainers), so D
 ## Roadmap
 
 1. ✅ Core: upload and check structured e-invoices
-2. AI extraction for plain PDF invoices, review queue
+2. ✅ AI extraction for plain PDF invoices, review, supplier master data
 3. Evals: measuring extraction quality with numbers
 4. Production readiness: worker, RabbitMQ, outbox, metrics, Grafana
 5. SaaS: login, roles, tenant isolation
