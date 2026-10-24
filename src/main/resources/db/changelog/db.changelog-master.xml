@@ -10,5 +10,6 @@
     <include file="changes/003-split-source-format-and-profile.xml" relativeToChangelogFile="true"/>
     <include file="db/changelog/changes/004-add-extraction-confidence.xml"/>
     <include file="db/changelog/changes/005-invoice-review.xml"/>
+    <include file="db/changelog/changes/006-suppliers.xml"/>
 
 </databaseChangeLog>

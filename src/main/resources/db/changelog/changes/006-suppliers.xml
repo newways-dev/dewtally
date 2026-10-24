@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- Supplier master data (Lieferantenstamm): who a tenant actually buys from. -->
+    <changeSet id="011-create-supplier" author="kate">
+        <createTable tableName="supplier" remarks="Known suppliers of a tenant">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" primaryKeyName="pk_supplier"/>
+            </column>
+            <column name="tenant_id" type="UUID">
+                <constraints nullable="false" foreignKeyName="fk_supplier_tenant" references="tenant(id)"/>
+            </column>
+            <column name="name" type="VARCHAR(300)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="vat_id" type="VARCHAR(30)"/>
+            <column name="status" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_by" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="version" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <sql>
+            ALTER TABLE supplier
+                ADD CONSTRAINT ck_supplier_status CHECK (status IN ('ACTIVE', 'BLOCKED'));
+            -- One supplier per VAT ID and tenant; suppliers without VAT ID are allowed several times.
+            CREATE UNIQUE INDEX uq_supplier_vat_id ON supplier (tenant_id, vat_id) WHERE vat_id IS NOT NULL;
+        </sql>
+
+        <createIndex tableName="supplier" indexName="ix_supplier_tenant">
+            <column name="tenant_id"/>
+        </createIndex>
+
+        <rollback>
+            <dropTable tableName="supplier"/>
+        </rollback>
+    </changeSet>
+
+    <!-- Bank accounts of a supplier. A new IBAN is only trusted after a SECOND person verified it. -->
+    <changeSet id="012-create-supplier-iban" author="kate">
+        <createTable tableName="supplier_iban" remarks="Bank accounts of a supplier with four-eyes verification">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" primaryKeyName="pk_supplier_iban"/>
+            </column>
+            <column name="supplier_id" type="UUID">
+                <constraints nullable="false" foreignKeyName="fk_supplier_iban_supplier" references="supplier(id)"/>
+            </column>
+            <column name="iban" type="VARCHAR(34)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="added_by" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="added_at" type="TIMESTAMP WITH TIME ZONE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="verified_by" type="VARCHAR(100)"/>
+            <column name="verified_at" type="TIMESTAMP WITH TIME ZONE"/>
+        </createTable>
+
+        <addUniqueConstraint tableName="supplier_iban" columnNames="supplier_id, iban"
+                             constraintName="uq_supplier_iban"/>
+
+        <sql>
+            ALTER TABLE supplier_iban
+                ADD CONSTRAINT ck_supplier_iban_status
+                    CHECK (status IN ('PENDING', 'VERIFIED'));
+            -- Four-eyes principle enforced by the database itself, even if application code had a bug.
+            ALTER TABLE supplier_iban
+                ADD CONSTRAINT ck_supplier_iban_four_eyes
+                    CHECK (verified_by IS NULL OR verified_by &lt;&gt; added_by);
+        </sql>
+
+        <rollback>
+            <dropTable tableName="supplier_iban"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

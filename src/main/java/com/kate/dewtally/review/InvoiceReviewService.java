@@ -71,13 +71,16 @@ public class InvoiceReviewService {
     }
 
     @Transactional
-    public InvoiceDetailsResponse accept(UUID tenantId, UUID invoiceId, String comment, String user) {
+    public InvoiceDetailsResponse accept(UUID tenantId, UUID invoiceId, String comment,
+                                         boolean ibanConfirmed, String user) {
         Invoice invoice = load(tenantId, invoiceId);
         InvoiceStatus previous = invoice.getStatus();
-        invoice.accept();
+        invoice.accept(ibanConfirmed);
+        // The audit trail must show that the bank account was explicitly confirmed, and how.
+        String recordedComment = ibanConfirmed ? "[IBAN confirmed] " + comment : comment;
         changes.save(InvoiceChange.decision(tenantId, invoiceId, ChangeType.ACCEPTED,
-                previous, invoice.getStatus(), comment, user));
-        log.info("Invoice {} accepted by {}", invoiceId, user);
+                previous, invoice.getStatus(), recordedComment, user));
+        log.info("Invoice {} accepted by {}{}", invoiceId, user, ibanConfirmed ? " (IBAN confirmed)" : "");
         return details(invoice);
     }
 
