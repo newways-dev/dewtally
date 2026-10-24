@@ -65,6 +65,11 @@ public class Invoice {
     private BigDecimal taxAmount;
     @Column(name = "gross_amount", precision = 15, scale = 2)
     private BigDecimal grossAmount;
+    // Discounts and surcharges on the whole invoice (BT-107, BT-108); null if there are none.
+    @Column(name = "allowance_total", precision = 15, scale = 2)
+    private BigDecimal allowanceTotal;
+    @Column(name = "charge_total", precision = 15, scale = 2)
+    private BigDecimal chargeTotal;
     // Optimistic locking: two reviewers cannot silently overwrite each other's changes.
     @Version
     @Column(name = "version", nullable = false)
@@ -124,7 +129,6 @@ public class Invoice {
     /**
      * Sets the status from the collected issues. Called once, after validation:
      * any ERROR makes the invoice INVALID, otherwise any WARNING sends it to review.
-     * <p>
      * Exception: data read by a language model may itself be wrong. An error then may be
      * our extraction mistake, not the supplier's, so a person decides instead of rejecting it.
      */
@@ -166,6 +170,8 @@ public class Invoice {
         track(changes, "netAmount", netAmount, data.netAmount());
         track(changes, "taxAmount", taxAmount, data.taxAmount());
         track(changes, "grossAmount", grossAmount, data.grossAmount());
+        track(changes, "allowanceTotal", allowanceTotal, data.allowanceTotal());
+        track(changes, "chargeTotal", chargeTotal, data.chargeTotal());
         changes.addAll(correctLines(newLines));
 
         if (changes.isEmpty()) {
@@ -182,10 +188,6 @@ public class Invoice {
         return changes;
     }
 
-    /**
-     * A reviewer confirms the invoice may be paid. Not possible while it has errors.
-     * With a high-risk finding (changed IBAN) the reviewer must confirm it was checked with the supplier.
-     */
     public void accept(boolean highRiskConfirmed) {
         if (status != InvoiceStatus.VALID && status != InvoiceStatus.NEEDS_REVIEW) {
             throw new InvoiceStateException("Only VALID or NEEDS_REVIEW invoices can be accepted, status is " + status);
@@ -257,6 +259,8 @@ public class Invoice {
         this.netAmount = data.netAmount();
         this.taxAmount = data.taxAmount();
         this.grossAmount = data.grossAmount();
+        this.allowanceTotal = data.allowanceTotal();
+        this.chargeTotal = data.chargeTotal();
     }
 
     @PrePersist
@@ -337,6 +341,14 @@ public class Invoice {
 
     public BigDecimal getGrossAmount() {
         return grossAmount;
+    }
+
+    public BigDecimal getAllowanceTotal() {
+        return allowanceTotal;
+    }
+
+    public BigDecimal getChargeTotal() {
+        return chargeTotal;
     }
 
     public Long getVersion() {

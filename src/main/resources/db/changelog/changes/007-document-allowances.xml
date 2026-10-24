@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="013-add-document-allowances-charges" author="kate">
+        <addColumn tableName="invoice">
+            <column name="allowance_total" type="NUMERIC(15,2)"
+                    remarks="BT-107: sum of document-level allowances (discounts)"/>
+            <column name="charge_total" type="NUMERIC(15,2)"
+                    remarks="BT-108: sum of document-level charges (surcharges)"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

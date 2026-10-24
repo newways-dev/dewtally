@@ -11,5 +11,6 @@
     <include file="db/changelog/changes/004-add-extraction-confidence.xml"/>
     <include file="db/changelog/changes/005-invoice-review.xml"/>
     <include file="db/changelog/changes/006-suppliers.xml"/>
+    <include file="db/changelog/changes/007-document-allowances.xml"/>
 
 </databaseChangeLog>

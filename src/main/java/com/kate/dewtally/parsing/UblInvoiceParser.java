@@ -4,6 +4,7 @@ import com.kate.dewtally.invoice.InvoiceData;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -17,6 +18,10 @@ final class UblInvoiceParser {
 
     private static final String SUPPLIER = "cac:AccountingSupplierParty/cac:Party/";
     private static final String TOTALS = "cac:LegalMonetaryTotal/";
+    // Direct children of the root are document-level; line-level ones sit inside each line.
+    private static final String ALLOWANCE_CHARGE = "cac:AllowanceCharge";
+    private static final String INDICATOR = "cbc:ChargeIndicator";
+    private static final String AMOUNT = "cbc:Amount";
 
     private static List<ParsedLine> lines(XPathReader xml, Element root, boolean creditNote) {
         // Credit notes use different element names for lines and quantities.
@@ -70,6 +75,12 @@ final class UblInvoiceParser {
             supplierName = xml.text(root, SUPPLIER + "cac:PartyName/cbc:Name", 300);
         }
 
+        var entries = xml.elements(root, ALLOWANCE_CHARGE);
+        BigDecimal allowances = AllowanceCharges.total(xml,
+                xml.decimal(root, TOTALS + "cbc:AllowanceTotalAmount"), entries, INDICATOR, AMOUNT, false);
+        BigDecimal charges = AllowanceCharges.total(xml,
+                xml.decimal(root, TOTALS + "cbc:ChargeTotalAmount"), entries, INDICATOR, AMOUNT, true);
+
         InvoiceData data = new InvoiceData(
                 xml.text(root, "cbc:ID", 100),
                 date(xml.text(root, "cbc:IssueDate")),
@@ -81,7 +92,9 @@ final class UblInvoiceParser {
                 iban(xml.text(root, "cac:PaymentMeans/cac:PayeeFinancialAccount/cbc:ID")),
                 xml.decimal(root, TOTALS + "cbc:TaxExclusiveAmount"),
                 xml.decimal(root, "cac:TaxTotal/cbc:TaxAmount"),
-                xml.decimal(root, TOTALS + "cbc:TaxInclusiveAmount"));
+                xml.decimal(root, TOTALS + "cbc:TaxInclusiveAmount"),
+                allowances,
+                charges);
 
         return new ParsedInvoice(data, lines(xml, root, creditNote));
     }

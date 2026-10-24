@@ -28,6 +28,8 @@ public record InvoiceDetailsResponse(
         BigDecimal netAmount,
         BigDecimal taxAmount,
         BigDecimal grossAmount,
+        BigDecimal allowanceTotal,
+        BigDecimal chargeTotal,
         Instant createdAt,
         List<Line> lines,
         List<Issue> issues
@@ -53,6 +55,8 @@ public record InvoiceDetailsResponse(
                 invoice.getNetAmount(),
                 invoice.getTaxAmount(),
                 invoice.getGrossAmount(),
+                invoice.getAllowanceTotal(),
+                invoice.getChargeTotal(),
                 invoice.getCreatedAt(),
                 invoice.getLines().stream().map(Line::from).toList(),
                 invoice.getIssues().stream().map(Issue::from).toList());

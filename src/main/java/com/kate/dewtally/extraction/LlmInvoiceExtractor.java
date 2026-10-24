@@ -32,6 +32,11 @@ public class LlmInvoiceExtractor {
             - netAmount is the total without VAT (Netto, Nettobetrag, Summe netto).
               taxAmount is the total VAT (MwSt., USt., Umsatzsteuer).
               grossAmount is the total including VAT (Brutto, Gesamtbetrag, Rechnungsbetrag, zu zahlen).
+            - allowanceTotal: discounts on the whole invoice that are not invoice lines (Rabatt, Nachlass).
+              chargeTotal: surcharges on the whole invoice that are not invoice lines
+              (Versandkosten, Fracht, Verpackung). Both as positive numbers, empty string if there are none.
+              If shipping is listed as a normal invoice line, it is a line, not a charge.
+              Skonto (discount for early payment) is a payment term, not an allowance: never put it here.
             - supplierName and supplierVatId belong to the seller who issued the invoice, not to the buyer.
             - IBAN and VAT ID without spaces.
             - confidence: how sure you are that all fields are correct, from 0.0 to 1.0.
