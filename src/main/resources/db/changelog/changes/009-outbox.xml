@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- Transactional outbox: messages are written in the same transaction as the business change
+         and sent to RabbitMQ afterwards, so a message can never get lost.
+         A technical table without tenant data: the payload is only an id. -->
+    <changeSet id="015-create-outbox-message" author="kate">
+        <createTable tableName="outbox_message" remarks="Messages waiting to be sent to RabbitMQ">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" primaryKeyName="pk_outbox_message"/>
+            </column>
+            <column name="destination" type="VARCHAR(200)" remarks="Queue the message is sent to">
+                <constraints nullable="false"/>
+            </column>
+            <column name="payload" type="VARCHAR(4000)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="sent_at" type="TIMESTAMP WITH TIME ZONE" remarks="Null while not sent"/>
+            <column name="attempts" type="INT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="last_error" type="VARCHAR(1000)"/>
+        </createTable>
+
+        <sql>
+            -- The relay only ever looks at unsent messages; a partial index keeps that fast as sent ones pile up.
+            CREATE INDEX ix_outbox_message_unsent ON outbox_message (created_at) WHERE sent_at IS NULL;
+        </sql>
+
+        <rollback>
+            <dropTable tableName="outbox_message"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

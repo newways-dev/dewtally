@@ -9,12 +9,15 @@ official XRechnung rules and the company's own supplier master data, and tells y
 a human look and which are broken — and why.
 
 > Portfolio project, built step by step. Layers 1 (structured e-invoices), 2 (AI extraction and review) and
-> 3 (evals: measuring AI quality) are done; production readiness is next. See [ROADMAP.md](ROADMAP.md).
+> 3 (evals: measuring AI quality) are done; production readiness is in progress. See [ROADMAP.md](ROADMAP.md).
 
 ## What it does today
 
 - **Upload** an invoice file (`POST /api/documents`). Uploads are idempotent: the same file twice is stored once
   (SHA-256 per tenant).
+- **Background processing**: the upload answers `202 Accepted` right away; the document is processed through
+  RabbitMQ, and `GET /api/documents/{id}` shows its status. A transactional outbox makes sure no upload gets lost,
+  even when RabbitMQ is down.
 - **Detect the format**: XRechnung UBL, XRechnung CII, ZUGFeRD / Factur-X (PDF with embedded XML), plain PDF.
 - **Parse** structured invoices into header data, lines, allowances and charges.
 - **Read plain PDFs with AI**: a language model extracts the data; the model's own confidence and our rules decide
@@ -32,7 +35,7 @@ a human look and which are broken — and why.
 - **Measured AI quality**: an eval suite (real ZUGFeRD samples + hand-written traps) reports accuracy per field
   and fails on confident mistakes in fields that decide payment ([evals](evals/README.md)).
 - **Errors** in the standard RFC 9457 format (`application/problem+json`).
-- **Multi-tenant from day one**: every table carries `tenant_id`.
+- **Multi-tenant from day one**: every business table carries `tenant_id`.
 
 ## How it works
 
@@ -41,7 +44,11 @@ flowchart LR
     U[Client] -->|upload| API[Upload API]
     API --> H[SHA-256<br/>deduplication]
     H --> S[(File storage)]
-    H --> F[Format detection]
+    H --> T[One transaction:<br/>document + outbox message]
+    T --> O[Outbox relay]
+    O --> Q[[RabbitMQ]]
+    Q --> W[Processor]
+    W --> F[Format detection]
     F -->|XRechnung / ZUGFeRD| P[Parser<br/>UBL / CII]
     F -->|plain PDF| X[Text extraction<br/>+ masking]
     X --> L[Language model]
@@ -51,9 +58,9 @@ flowchart LR
     DB --> R[Read and review API]
 ```
 
-The application is a **modular monolith**: one deployable, packages by feature (`ingestion`, `format`, `parsing`,
-`extraction`, `validation`, `invoice`, `review`, `supplier`, `storage`, `tenant`). The boundaries are drawn so that
-parts can be moved into separate services later (AI extraction will run in its own worker).
+The application is a **modular monolith**: one deployable, packages by feature (`ingestion`, `document`, `format`,
+`parsing`, `extraction`, `validation`, `invoice`, `review`, `supplier`, `outbox`, `storage`, `tenant`). The boundaries
+are drawn so that parts can be moved into separate services later (AI extraction will run in its own worker).
 
 ## Tech stack
 
@@ -62,6 +69,7 @@ parts can be moved into separate services later (AI extraction will run in its o
 | Language / framework | Java 25, Spring Boot 4                              |
 | Database             | PostgreSQL 17, schema managed by Liquibase          |
 | Persistence          | Spring Data JPA (Hibernate 7)                       |
+| Messaging            | RabbitMQ (Spring AMQP), transactional outbox        |
 | e-invoice validation | KoSIT validator + XRechnung configuration           |
 | PDF                  | Apache PDFBox                                       |
 | AI                   | Spring AI with OpenAI (structured output)           |
@@ -80,8 +88,12 @@ cp .env.example .env          # then put your OPENAI_API_KEY into .env (never co
 ./mvnw spring-boot:run        # Windows: .\mvnw.cmd spring-boot:run
 ```
 
-Docker Compose starts PostgreSQL automatically, Liquibase creates the schema. The XRechnung validator configuration is
-included in `kosit/xrechnung/`. Without an API key, structured e-invoices work; plain PDFs go to review.
+Docker Compose starts PostgreSQL and RabbitMQ automatically, Liquibase creates the schema. Spring Boot only starts
+the containers when none of them is running yet; after adding a service to `compose.yaml`, start it once with
+`docker compose up -d`. The XRechnung validator configuration is included in `kosit/xrechnung/`.
+Without an API key, structured e-invoices work; plain PDFs go to review.
+
+RabbitMQ management UI: http://localhost:15672 (user and password `dewtally`).
 
 Create a tenant (there is no login yet; it comes in layer 5):
 
@@ -95,10 +107,13 @@ VALUES ('544cc1a9-416b-4715-ac24-cb559d89e262', 'Demo GmbH', now());
 ```bash
 TENANT=544cc1a9-416b-4715-ac24-cb559d89e262
 
-# Upload an invoice
+# Upload an invoice: 202 Accepted, processed in the background
 curl -F "file=@src/test/resources/invoices/xrechnung-ubl.xml" \
      -H "X-Tenant-Id: $TENANT" \
      http://localhost:8080/api/documents
+
+# Processing status of a document; invoiceId is set once it is processed
+curl -H "X-Tenant-Id: $TENANT" http://localhost:8080/api/documents/$DOCUMENT_ID
 
 # List invoices that need a human look
 curl -H "X-Tenant-Id: $TENANT" "http://localhost:8080/api/invoices?status=NEEDS_REVIEW"
@@ -127,7 +142,8 @@ curl -X POST -H "X-Tenant-Id: $TENANT" -H "X-User-Name: anna" -H "Content-Type: 
 ./mvnw verify
 ```
 
-Integration tests run against a real PostgreSQL in Docker (Testcontainers), so Docker must be running.
+Integration tests run against a real PostgreSQL and RabbitMQ in Docker (Testcontainers), so Docker must be running.
+Most tests process uploads synchronously; dedicated tests cover background processing and an unreachable RabbitMQ.
 Tests that call the real model are skipped unless started with `-Dai=true`.
 
 AI evals call the real model, cost a little money and are not part of the normal build:
@@ -154,18 +170,21 @@ See [evals/README.md](evals/README.md) for the test set, the regression check an
   ([ADR 0002](docs/adr/0002-model-choice.md)).
 - **Not all mistakes are equal.** The eval fails on confident mistakes in fields that decide payment (amounts, IBAN,
   dates); a wrong supplier name is caught by other checks and only lowers the score.
+- **Transactional outbox instead of sending directly.** The document and its "process me" message are saved in one
+  database transaction; a relay sends the message to RabbitMQ afterwards and retries while the broker is down.
+  Delivery is at-least-once, so the processor is idempotent: a document that already has an invoice is skipped.
 - **Liquibase with XML changelogs; Hibernate only validates the schema.** Database changes are explicit and reviewable.
 - **Idempotent upload.** A unique constraint on `(tenant_id, sha256)` makes double uploads harmless, even when they
   race.
 - **DTOs in the API, never entities.** The JSON contract is stable and does not leak internal fields.
-- **Tenant in every table now**, so isolation (and later Row-Level Security) is not a rewrite.
+- **Tenant in every business table now**, so isolation (and later Row-Level Security) is not a rewrite.
 
 ## Roadmap
 
 1. ✅ Core: upload and check structured e-invoices
 2. ✅ AI extraction for plain PDF invoices, review, supplier master data
 3. ✅ Evals: measuring extraction quality with numbers
-4. Production readiness: worker, RabbitMQ, outbox, metrics, Grafana
+4. 🔄 Production readiness: background processing and outbox done; retries, DLQ, worker, metrics next
 5. SaaS: login, roles, tenant isolation
 6. Azure deployment with Terraform
 7. UI and showcase
