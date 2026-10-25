@@ -38,3 +38,10 @@ Reports are written to `target/evals/`; snapshots worth keeping go to `results/`
 | 2026-10-25 | gpt-5-nano |         16 / 18 |      5 / 6 |                 0 |       15 of 24 |
 
 Model choice: [ADR 0002](../docs/adr/0002-model-choice.md).
+
+## Known disagreements
+
+- `zugferd_2p0_EN16931_OEPNV.pdf`: the due date 03.10.2018 sits in a table cell next to
+  "Der Rechnungsbetrag wurde bereits beglichen". Since the prompt mentions "bereits bezahlt",
+  gpt-5-mini sometimes leaves the due date empty. Accepted: the invoice is already paid,
+  and an empty value is safer than a wrong one.

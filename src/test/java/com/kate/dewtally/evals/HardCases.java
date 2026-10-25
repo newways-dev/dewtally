@@ -23,7 +23,8 @@ final class HardCases {
             promptInjection(),
             grossLinePrices(),
             germanFormats(),
-            allowanceAndCharge());
+            allowanceAndCharge(),
+            prepayment());
 
     private HardCases() {
     }
@@ -146,6 +147,26 @@ final class HardCases {
                 """,
                 expected("BM-2027-77", "2027-03-20", "2027-04-19", "Büro & Mehr GmbH", "DE276543210",
                         OTHER_IBAN, "1085.90", "206.32", "1292.22", "120.00", "5.90", "1000.00", "200.00"));
+    }
+
+    // A prepayment is deducted at the end: grossAmount is the invoice total (1190), not the amount due (690).
+    // Found by evals: the old prompt called "zu zahlen" a gross amount.
+    private static Case prepayment() {
+        return new Case("prepayment", """
+                Pixelwerk Studio GmbH · Schanzenstraße 22 · 20357 Hamburg · USt-IdNr. DE254321098
+                Schlussrechnung PW-2027-031
+                Rechnungsdatum: 12.03.2027
+                Pos. Leistung Menge Betrag
+                1 Webdesign Phase 2 1 pauschal 1.000,00 €
+                Nettobetrag 1.000,00 €
+                USt. 19 % 190,00 €
+                Gesamtbetrag 1.190,00 €
+                abzgl. Anzahlung vom 01.02.2027 -500,00 €
+                Zu zahlen 690,00 €
+                Zahlbar bis 26.03.2027 · IBAN DE89 3704 0044 0532 0130 00
+                """,
+                expected("PW-2027-031", "2027-03-12", "2027-03-26", "Pixelwerk Studio GmbH", "DE254321098",
+                        SELLER_IBAN, "1000.00", "190.00", "1190.00", null, null, "1000.00"));
     }
 
     /**
