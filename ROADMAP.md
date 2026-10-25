@@ -44,6 +44,8 @@ No dates on purpose: the order matters, not the calendar.
 - [ ] Check that the visible PDF matches the embedded XML (a hybrid invoice can show one thing and pay another)
 - [ ] Detect invoices marked as already paid ("bereits beglichen", "bereits bezahlt") to avoid paying twice
 - [ ] Clean up sent outbox messages after a retention period
+- [ ] Non-blocking retries with delay queues (today the pause between retries blocks the consumer)
+- [ ] Alerts: dead letter queue not empty, outbox growing, model latency too high
 
 ## Layer 3 — Evals: measuring extraction quality ✅
 
@@ -53,14 +55,14 @@ No dates on purpose: the order matters, not the calendar.
 - [x] Prompt: amount due vs. gross amount for partial invoices with prepayments (found by evals)
 - [x] Regression check: the eval fails on confident mistakes in critical fields
 
-## Layer 4 — Production readiness
+## Layer 4 — Production readiness ✅
 
 - [x] Background processing through RabbitMQ: upload answers 202, status via GET /api/documents/{id}
 - [x] Transactional outbox: document and queue message saved in one transaction, so no upload gets lost
-- [x] Retries and a dead letter queue for poison messages
+- [x] Retries for temporary errors and a dead letter queue for poison messages
 - [x] AI extraction in a separate worker, connected via RabbitMQ
 - [x] Parse untrusted files (PDF, XML) in the isolated worker with memory and CPU limits
-- [ ] Metrics and dashboards (Micrometer, Prometheus, Grafana)
+- [x] Metrics and dashboards (Micrometer, Prometheus, Grafana)
 
 ## Layer 5 — SaaS
 

@@ -6,6 +6,8 @@ import com.kate.dewtally.invoice.*;
 import com.kate.dewtally.parsing.ParsedInvoice;
 import com.kate.dewtally.parsing.ParsedLine;
 import com.kate.dewtally.validation.InvoiceValidationService;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -17,7 +19,6 @@ import java.util.UUID;
 /**
  * Creates an invoice and validates it in ONE transaction: either the invoice exists and has
  * a final status, or nothing was saved and the document can simply be processed again.
- * <p>
  * A separate bean on purpose: @Transactional only works when called from another bean,
  * not from inside the same class.
  */
@@ -28,10 +29,12 @@ class InvoiceImporter {
 
     private final InvoiceService invoiceService;
     private final InvoiceValidationService validationService;
+    private final MeterRegistry metrics;
 
-    InvoiceImporter(InvoiceService invoiceService, InvoiceValidationService validationService) {
+    InvoiceImporter(InvoiceService invoiceService, InvoiceValidationService validationService, MeterRegistry metrics) {
         this.invoiceService = invoiceService;
         this.validationService = validationService;
+        this.metrics = metrics;
     }
 
     private static List<InvoiceLine> toInvoiceLines(ParsedInvoice parsed) {
@@ -78,6 +81,13 @@ class InvoiceImporter {
                 document.getTenantId(), invoice.getId(), document.getSourceFormat(), document.getProfile(), content);
         log.info("Created invoice {} ({}) from document {}, status {}",
                 invoice.getId(), invoice.getExtractionMethod(), document.getId(), status);
+        // How much work lands on people: the share of NEEDS_REVIEW and INVALID per extraction method.
+        Counter.builder("dewtally.invoices.created")
+                .description("Invoices created from documents, by extraction method and validation status")
+                .tag("method", invoice.getExtractionMethod().name())
+                .tag("status", status.name())
+                .register(metrics)
+                .increment();
         return invoice.getId();
     }
 }

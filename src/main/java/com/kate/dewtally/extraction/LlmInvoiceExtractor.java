@@ -1,5 +1,8 @@
 package com.kate.dewtally.extraction;
 
+import io.micrometer.core.instrument.DistributionSummary;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.AdvisorParams;
@@ -57,32 +60,55 @@ public class LlmInvoiceExtractor {
     private static final Logger log = LoggerFactory.getLogger(LlmInvoiceExtractor.class);
     private final ChatClient chatClient;
     private final Duration timeout;
+    private final MeterRegistry metrics;
+    private final String model;
 
     public LlmInvoiceExtractor(ChatClient.Builder chatClientBuilder,
-                               @Value("${dewtally.extraction.llm-timeout:60s}") Duration timeout) {
+                               @Value("${dewtally.extraction.llm-timeout:60s}") Duration timeout,
+                               MeterRegistry metrics,
+                               @Value("${spring.ai.openai.chat.model:unknown}") String model) {
         this.chatClient = chatClientBuilder.build();
         this.timeout = timeout;
+        this.metrics = metrics;
+        this.model = model;
     }
 
     public InvoiceExtraction extract(String invoiceText) {
         long start = System.currentTimeMillis();
-        MaskedText masked = Masking.mask(invoiceText);
+        Timer.Sample sample = Timer.start(metrics);
+        String outcome = "error";
+        try {
+            MaskedText masked = Masking.mask(invoiceText);
 
-        ExtractedInvoice answer = TimeLimits.call(() -> ask(masked.text()), timeout, "LLM extraction");
-        if (answer == null) {
-            throw new IllegalStateException("The model returned no answer");
+            ExtractedInvoice answer = TimeLimits.call(() -> ask(masked.text()), timeout, "LLM extraction");
+            if (answer == null) {
+                throw new IllegalStateException("The model returned no answer");
+            }
+
+            // The IBAN always comes from the document, never from the model.
+            String iban = masked.restoreIban(answer.iban());
+            if (iban == null && answer.iban() != null && !answer.iban().isBlank()) {
+                log.warn("The model returned an IBAN that is not in the document; it was ignored");
+            }
+            answer = answer.withIban(iban);
+
+            log.info("Extracted invoice with LLM in {} ms (confidence {}, {} IBAN(s) masked)",
+                    System.currentTimeMillis() - start, answer.confidence(), masked.ibans().size());
+            // A falling average means the incoming invoices changed or the model got worse.
+            DistributionSummary.builder("dewtally.llm.confidence")
+                    .description("The model's own confidence per extracted invoice (0 to 1)")
+                    .tag("model", model)
+                    .register(metrics)
+                    .record(answer.confidence());
+            outcome = "success";
+            return new InvoiceExtraction(answer.toParsedInvoice(), answer.confidence());
+        } finally {
+            sample.stop(Timer.builder("dewtally.llm.extraction")
+                    .description("Duration of one call to the language model")
+                    .tag("model", model)
+                    .tag("outcome", outcome)
+                    .register(metrics));
         }
-
-        // The IBAN always comes from the document, never from the model.
-        String iban = masked.restoreIban(answer.iban());
-        if (iban == null && answer.iban() != null && !answer.iban().isBlank()) {
-            log.warn("The model returned an IBAN that is not in the document; it was ignored");
-        }
-        answer = answer.withIban(iban);
-
-        log.info("Extracted invoice with LLM in {} ms (confidence {}, {} IBAN(s) masked)",
-                System.currentTimeMillis() - start, answer.confidence(), masked.ibans().size());
-        return new InvoiceExtraction(answer.toParsedInvoice(), answer.confidence());
     }
 
     private ExtractedInvoice ask(String invoiceText) {

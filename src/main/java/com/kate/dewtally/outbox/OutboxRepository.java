@@ -22,4 +22,7 @@ public interface OutboxRepository extends JpaRepository<OutboxMessage, UUID> {
 
     // For tests and troubleshooting: all messages about one thing, e.g. one document id.
     List<OutboxMessage> findByPayload(String payload);
+
+    // For the "pending" metric; the partial index on unsent messages keeps it cheap.
+    long countBySentAtIsNull();
 }
