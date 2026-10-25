@@ -7,3 +7,12 @@ services:
       POSTGRES_PASSWORD: dewtally
     ports:
       - "5432:5432"
+  rabbitmq:
+    # "management" adds a web UI on http://localhost:15672 to watch the queues
+    image: rabbitmq:4-management
+    environment:
+      RABBITMQ_DEFAULT_USER: dewtally
+      RABBITMQ_DEFAULT_PASS: dewtally
+    ports:
+      - "5672:5672"
+      - "15672:15672"

@@ -12,5 +12,6 @@
     <include file="db/changelog/changes/005-invoice-review.xml"/>
     <include file="db/changelog/changes/006-suppliers.xml"/>
     <include file="db/changelog/changes/007-document-allowances.xml"/>
+    <include file="db/changelog/changes/008-document-processing-status.xml"/>
 
 </databaseChangeLog>
