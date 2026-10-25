@@ -8,16 +8,17 @@ they must also send them. dewtally takes incoming invoices, reads them, checks t
 official XRechnung rules and the company's own supplier master data, and tells you which invoices are fine, which need
 a human look and which are broken — and why.
 
-> Portfolio project, built step by step. Layers 1 (structured e-invoices), 2 (AI extraction and review) and
-> 3 (evals: measuring AI quality) are done; production readiness is in progress. See [ROADMAP.md](ROADMAP.md).
+> Portfolio project, built step by step. Layers 1 (structured e-invoices), 2 (AI extraction and review),
+> 3 (evals: measuring AI quality) and 4 (production readiness) are done; SaaS (login, roles, tenant isolation)
+> is next. See [ROADMAP.md](ROADMAP.md).
 
 ## What it does today
 
 - **Upload** an invoice file (`POST /api/documents`). Uploads are idempotent: the same file twice is stored once
   (SHA-256 per tenant).
-- **Background processing**: the upload answers `202 Accepted` right away; the document is processed through
-  RabbitMQ, and `GET /api/documents/{id}` shows its status. A transactional outbox makes sure no upload gets lost,
-  even when RabbitMQ is down.
+- **Background processing**: the upload answers `202 Accepted` right away; a separate worker processes the document
+  through RabbitMQ, and `GET /api/documents/{id}` shows its status. A transactional outbox makes sure no upload gets
+  lost, even when RabbitMQ is down; temporary errors are retried, and poison messages end in a dead letter queue.
 - **Detect the format**: XRechnung UBL, XRechnung CII, ZUGFeRD / Factur-X (PDF with embedded XML), plain PDF.
 - **Parse** structured invoices into header data, lines, allowances and charges.
 - **Read plain PDFs with AI**: a language model extracts the data; the model's own confidence and our rules decide
@@ -34,6 +35,8 @@ a human look and which are broken — and why.
 - **Data protection**: IBANs, e-mails and phone numbers are masked before text is sent to the model.
 - **Measured AI quality**: an eval suite (real ZUGFeRD samples + hand-written traps) reports accuracy per field
   and fails on confident mistakes in fields that decide payment ([evals](evals/README.md)).
+- **Observability**: metrics for processing time, model latency and confidence, invoice status, queue and dead
+  letter queue size and outbox backlog, in Prometheus and a Grafana dashboard.
 - **Errors** in the standard RFC 9457 format (`application/problem+json`).
 - **Multi-tenant from day one**: every business table carries `tenant_id`.
 
@@ -47,7 +50,8 @@ flowchart LR
     H --> T[One transaction:<br/>document + outbox message]
     T --> O[Outbox relay]
     O --> Q[[RabbitMQ]]
-    Q --> W[Processor]
+    Q --> W[Worker]
+    Q -.->|after all retries| D[[Dead letter queue]]
     W --> F[Format detection]
     F -->|XRechnung / ZUGFeRD| P[Parser<br/>UBL / CII]
     F -->|plain PDF| X[Text extraction<br/>+ masking]
@@ -58,9 +62,9 @@ flowchart LR
     DB --> R[Read and review API]
 ```
 
-The application is a **modular monolith**: one deployable, packages by feature (`ingestion`, `document`, `format`,
-`parsing`, `extraction`, `validation`, `invoice`, `review`, `supplier`, `outbox`, `storage`, `tenant`). The boundaries
-are drawn so that parts can be moved into separate services later (AI extraction will run in its own worker).
+The application is a **modular monolith**: one code base, packages by feature (`ingestion`, `document`, `format`,
+`parsing`, `extraction`, `validation`, `invoice`, `review`, `supplier`, `outbox`, `storage`, `tenant`). It runs in two
+roles: the **api** and a **worker** for the untrusted, slow part (PDF parsing and the language model).
 
 ## Tech stack
 
@@ -69,10 +73,12 @@ are drawn so that parts can be moved into separate services later (AI extraction
 | Language / framework | Java 25, Spring Boot 4                              |
 | Database             | PostgreSQL 17, schema managed by Liquibase          |
 | Persistence          | Spring Data JPA (Hibernate 7)                       |
-| Messaging            | RabbitMQ (Spring AMQP), transactional outbox        |
+| Messaging            | RabbitMQ (Spring AMQP), transactional outbox, DLQ   |
 | e-invoice validation | KoSIT validator + XRechnung configuration           |
 | PDF                  | Apache PDFBox                                       |
 | AI                   | Spring AI with OpenAI (structured output)           |
+| Observability        | Micrometer, Prometheus, Grafana                     |
+| Containers           | Docker, Docker Compose (api + worker with limits)   |
 | Tests                | JUnit 5, AssertJ, Mockito, MockMvc, Testcontainers  |
 | AI evals             | Own eval suite on ZUGFeRD samples and hard cases    |
 | CI                   | GitHub Actions (`mvn verify` on every pull request) |
@@ -88,10 +94,10 @@ cp .env.example .env          # then put your OPENAI_API_KEY into .env (never co
 ./mvnw spring-boot:run        # Windows: .\mvnw.cmd spring-boot:run
 ```
 
-Docker Compose starts PostgreSQL and RabbitMQ automatically, Liquibase creates the schema. Spring Boot only starts
-the containers when none of them is running yet; after adding a service to `compose.yaml`, start it once with
-`docker compose up -d`. The XRechnung validator configuration is included in `kosit/xrechnung/`.
-Without an API key, structured e-invoices work; plain PDFs go to review.
+This runs api and worker in one process. Docker Compose starts PostgreSQL and RabbitMQ automatically, Liquibase
+creates the schema. Spring Boot only starts the containers when none of them is running yet; after adding a service
+to `compose.yaml`, start it once with `docker compose up -d`. The XRechnung validator configuration is included in
+`kosit/xrechnung/`. Without an API key, structured e-invoices work; plain PDFs go to review.
 
 RabbitMQ management UI: http://localhost:15672 (user and password `dewtally`).
 
@@ -136,7 +142,7 @@ curl -X POST -H "X-Tenant-Id: $TENANT" -H "X-User-Name: anna" -H "Content-Type: 
      http://localhost:8080/api/invoices/$INVOICE_ID/accept
 ```
 
-## Run as containers (api + worker)
+## Run as containers (api + worker + monitoring)
 
 The same image runs in two roles: the **api** accepts uploads and serves the API; the **worker** parses
 untrusted files and calls the language model, limited to 1 GB of memory and 1 CPU. A broken PDF can
@@ -149,9 +155,11 @@ docker compose --profile app up -d --build
 docker stats --no-stream        # the worker shows its 1 GiB limit
 ```
 
-Uploaded files live in a Docker volume shared by both (Azure Blob Storage in production).
-If a container cannot reach another one by name (`UnknownHostException: rabbitmq`), recreate them all:
-`docker compose --profile app up -d --force-recreate`.
+- Metrics: Prometheus on http://localhost:9090, Grafana dashboard on http://localhost:3000/d/dewtally.
+- The api exposes metrics on a separate management port (9091) that is not published outside Docker.
+- Uploaded files live in a Docker volume shared by both roles (Azure Blob Storage in production).
+- If a container cannot reach another one by name (`UnknownHostException: rabbitmq`), recreate them all:
+  `docker compose --profile app up -d --force-recreate`.
 
 ## Tests
 
@@ -160,8 +168,8 @@ If a container cannot reach another one by name (`UnknownHostException: rabbitmq
 ```
 
 Integration tests run against a real PostgreSQL and RabbitMQ in Docker (Testcontainers), so Docker must be running.
-Most tests process uploads synchronously; dedicated tests cover background processing and an unreachable RabbitMQ.
-Tests that call the real model are skipped unless started with `-Dai=true`.
+Most tests process uploads synchronously; dedicated tests cover background processing, an unreachable RabbitMQ and
+the dead letter queue. Tests that call the real model are skipped unless started with `-Dai=true`.
 
 AI evals call the real model, cost a little money and are not part of the normal build:
 
@@ -190,22 +198,27 @@ See [evals/README.md](evals/README.md) for the test set, the regression check an
 - **Transactional outbox instead of sending directly.** The document and its "process me" message are saved in one
   database transaction; a relay sends the message to RabbitMQ afterwards and retries while the broker is down.
   Delivery is at-least-once, so the processor is idempotent: a document that already has an invoice is skipped.
+- **Temporary vs. permanent errors.** A broken file is handled at once (FAILED, or an invoice for manual review);
+  a temporary problem (busy server, database unavailable) is retried with growing pauses. A message that fails
+  every retry goes to a dead letter queue, so one poison message never blocks the others.
+- **Untrusted files are parsed in a separate, limited worker.** Java cannot stop a stuck thread, so real
+  isolation needs a separate process: the worker has memory and CPU limits and can crash without taking the API
+  with it. Same code base and image, two Spring profiles: a modular monolith with a background worker,
+  not microservices.
+- **Metrics that answer business questions.** Besides JVM metrics: how many invoices need a person, how sure the
+  model is, how long it takes, and whether anything is stuck in the dead letter queue or the outbox.
 - **Liquibase with XML changelogs; Hibernate only validates the schema.** Database changes are explicit and reviewable.
 - **Idempotent upload.** A unique constraint on `(tenant_id, sha256)` makes double uploads harmless, even when they
   race.
 - **DTOs in the API, never entities.** The JSON contract is stable and does not leak internal fields.
 - **Tenant in every business table now**, so isolation (and later Row-Level Security) is not a rewrite.
-- **Untrusted files are parsed in a separate, limited worker.** Java cannot stop a stuck thread, so real
-  isolation needs a separate process: the worker has memory and CPU limits and can crash without taking the API
-  with it. Same code base and image, two Spring profiles: a modular monolith with a background worker,
-  not microservices.
 
 ## Roadmap
 
 1. ✅ Core: upload and check structured e-invoices
 2. ✅ AI extraction for plain PDF invoices, review, supplier master data
 3. ✅ Evals: measuring extraction quality with numbers
-4. 🔄 Production readiness: background processing and outbox done; retries, DLQ, worker, metrics next
+4. ✅ Production readiness: background worker, outbox, retries and DLQ, metrics
 5. SaaS: login, roles, tenant isolation
 6. Azure deployment with Terraform
 7. UI and showcase

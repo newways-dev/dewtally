@@ -1,5 +1,7 @@
 package com.kate.dewtally.ingestion;
 
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -15,15 +17,27 @@ import java.util.UUID;
 class DocumentReceivedListener {
 
     private final DocumentProcessor processor;
+    private final MeterRegistry metrics;
 
-    DocumentReceivedListener(DocumentProcessor processor) {
+    DocumentReceivedListener(DocumentProcessor processor, MeterRegistry metrics) {
         this.processor = processor;
+        this.metrics = metrics;
     }
 
     // Returning normally acknowledges the message. Throwing (a temporary problem, or a payload that is
     // not a document id) makes Spring retry it; after the last retry it goes to the dead letter queue.
     @RabbitListener(queues = ProcessingQueue.NAME)
     void onDocumentReceived(String documentId) {
-        processor.process(UUID.fromString(documentId));
+        Timer.Sample sample = Timer.start(metrics);
+        String outcome = "error"; // thrown: will be retried or end in the dead letter queue
+        try {
+            UUID invoiceId = processor.process(UUID.fromString(documentId));
+            outcome = invoiceId != null ? "invoice" : "no-invoice";
+        } finally {
+            sample.stop(Timer.builder("dewtally.documents.processing")
+                    .description("Time to process one document from the queue")
+                    .tag("outcome", outcome)
+                    .register(metrics));
+        }
     }
 }
