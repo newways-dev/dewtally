@@ -2,7 +2,6 @@ package com.kate.dewtally.ingestion;
 
 import com.kate.dewtally.document.InvoiceDocument;
 import com.kate.dewtally.document.InvoiceDocumentRepository;
-import com.kate.dewtally.document.ProcessingStatus;
 import com.kate.dewtally.format.DetectedFormat;
 import com.kate.dewtally.format.FormatDetector;
 import com.kate.dewtally.invoice.InvoiceService;
@@ -10,8 +9,6 @@ import com.kate.dewtally.storage.DocumentStorage;
 import com.kate.dewtally.tenant.TenantRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.amqp.AmqpException;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -27,10 +24,9 @@ import java.util.UUID;
 /**
  * Accepts an uploaded file: hashes it, skips files the tenant already uploaded, detects its format,
  * stores the original and records it as an invoice document. Then the document is processed:
- * right away (synchronous mode) or in the background through RabbitMQ (asynchronous mode).
- * Deliberately not @Transactional: storing a file is not part of a database transaction.
- * If processing fails, the document (the legal original) is still kept; uploading the same file
- * again processes it again.
+ * right away (synchronous mode) or in the background (asynchronous mode), where the document and the
+ * "process it" message are saved in one transaction (transactional outbox), so no upload gets lost.
+ * Deliberately not @Transactional itself: storing a file is not part of a database transaction.
  */
 @Service
 public class DocumentUploadService {
@@ -44,26 +40,26 @@ public class DocumentUploadService {
     private final InvoiceDocumentRepository documents;
     private final DocumentStorage storage;
     private final FormatDetector formatDetector;
+    private final DocumentRecorder recorder;
     private final DocumentProcessor processor;
     private final InvoiceService invoiceService;
-    private final RabbitTemplate rabbit;
     private final boolean async;
 
     public DocumentUploadService(TenantRepository tenants,
                                  InvoiceDocumentRepository documents,
                                  DocumentStorage storage,
                                  FormatDetector formatDetector,
+                                 DocumentRecorder recorder,
                                  DocumentProcessor processor,
                                  InvoiceService invoiceService,
-                                 RabbitTemplate rabbit,
                                  @Value("${dewtally.processing.async:false}") boolean async) {
         this.tenants = tenants;
         this.documents = documents;
         this.storage = storage;
         this.formatDetector = formatDetector;
+        this.recorder = recorder;
         this.processor = processor;
         this.invoiceService = invoiceService;
-        this.rabbit = rabbit;
         this.async = async;
     }
 
@@ -132,7 +128,7 @@ public class DocumentUploadService {
 
         InvoiceDocument saved;
         try {
-            saved = documents.saveAndFlush(document);
+            saved = recorder.save(document, async);
         } catch (DataIntegrityViolationException e) {
             // Race condition: a parallel request saved the same file a moment earlier.
             // The unique constraint in the database caught it; return the winner.
@@ -141,10 +137,11 @@ public class DocumentUploadService {
                     .map(winner -> alreadyUploaded(winner, content))
                     .orElseThrow(() -> e);
         }
-        log.info("Tenant {} uploaded new document {} ({}, profile {})",
-                tenantId, saved.getId(), detected.format(), detected.profile());
+        log.info("Tenant {} uploaded new document {} ({}, profile {}){}",
+                tenantId, saved.getId(), detected.format(), detected.profile(), async ? ", queued" : "");
 
-        return new UploadResult(saved, true, dispatch(saved, content));
+        UUID invoiceId = async ? null : processor.process(saved, content);
+        return new UploadResult(saved, true, invoiceId);
     }
 
     /**
@@ -164,28 +161,9 @@ public class DocumentUploadService {
         }
         // An earlier attempt kept the document but failed before the invoice existed: try again.
         log.info("Document {} has no invoice yet, processing it again", document.getId());
-        return new UploadResult(document, false, dispatch(document, content));
-    }
-
-    // Synchronous: process now and return the invoice id. Asynchronous: queue the document and return null.
-    private UUID dispatch(InvoiceDocument document, byte[] content) {
-        if (!async) {
-            return processor.process(document, content);
+        if (async) {
+            return new UploadResult(recorder.requeue(document), false, null);
         }
-        if (document.getProcessingStatus() != ProcessingStatus.RECEIVED) {
-            document.markReceived();
-            documents.save(document);
-        }
-        try {
-            // Only the id goes into the queue; the file stays in storage. The document is already
-            // committed (saveAndFlush), so the listener is guaranteed to find it.
-            rabbit.convertAndSend(ProcessingQueue.NAME, document.getId().toString());
-            log.info("Queued document {} for processing", document.getId());
-        } catch (AmqpException e) {
-            // Known gap, closed by the transactional outbox (layer 4, step 2): the document stays
-            // RECEIVED, and uploading the same file again queues it again.
-            log.error("Could not queue document {} for processing", document.getId(), e);
-        }
-        return null;
+        return new UploadResult(document, false, processor.process(document, content));
     }
 }

@@ -43,6 +43,7 @@ No dates on purpose: the order matters, not the calendar.
 - [ ] HTTP client timeout for Spring AI calls (instead of only the virtual-thread time limit)
 - [ ] Check that the visible PDF matches the embedded XML (a hybrid invoice can show one thing and pay another)
 - [ ] Detect invoices marked as already paid ("bereits beglichen", "bereits bezahlt") to avoid paying twice
+- [ ] Clean up sent outbox messages after a retention period
 
 ## Layer 3 — Evals: measuring extraction quality ✅
 
@@ -55,7 +56,7 @@ No dates on purpose: the order matters, not the calendar.
 ## Layer 4 — Production readiness
 
 - [x] Background processing through RabbitMQ: upload answers 202, status via GET /api/documents/{id}
-- [ ] Transactional outbox for reliable messages
+- [x] Transactional outbox: document and queue message saved in one transaction, so no upload gets lost
 - [ ] Retries and a dead letter queue for poison messages
 - [ ] AI extraction in a separate worker, connected via RabbitMQ
 - [ ] Parse untrusted files (PDF, XML) in the isolated worker with memory and CPU limits
