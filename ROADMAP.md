@@ -41,6 +41,7 @@ No dates on purpose: the order matters, not the calendar.
 - [ ] ADR 0002: GoBD retention (8 years, originals unchanged) vs. DSGVO deletion
 - [ ] Mask names and addresses before sending text to the model (needs NER)
 - [ ] HTTP client timeout for Spring AI calls (instead of only the virtual-thread time limit)
+- [ ] Check that the visible PDF matches the embedded XML (a hybrid invoice can show one thing and pay another)
 
 ## Layer 3 — Evals: measuring extraction quality
 

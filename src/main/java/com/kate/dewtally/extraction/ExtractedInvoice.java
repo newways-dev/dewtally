@@ -119,10 +119,16 @@ public record ExtractedInvoice(
         return new BigDecimal(cleaned);
     }
 
-    // Allowances and charges are positive by definition: a discount printed as "-268.28" means 268.28.
-    static BigDecimal positiveAmount(String value) {
-        BigDecimal amount = amount(value);
-        return amount == null ? null : amount.abs();
+    /**
+     * Allowances and charges take the sign of the net amount. A PDF prints a discount as "-268.28"
+     * either way, but in a correction invoice with all amounts negative the discount is negative too.
+     */
+    static BigDecimal withSignOf(BigDecimal net, BigDecimal value) {
+        if (value == null) {
+            return null;
+        }
+        BigDecimal positive = value.abs();
+        return net != null && net.signum() < 0 ? positive.negate() : positive;
     }
 
     /**
@@ -150,8 +156,8 @@ public record ExtractedInvoice(
                 amount(netAmount),
                 amount(taxAmount),
                 amount(grossAmount),
-                positiveAmount(allowanceTotal),
-                positiveAmount(chargeTotal));
+                withSignOf(amount(netAmount), amount(allowanceTotal)),
+                withSignOf(amount(netAmount), amount(chargeTotal)));
 
         List<ParsedLine> parsedLines = new ArrayList<>();
         int lineNo = 1;
