@@ -8,6 +8,8 @@ import java.util.UUID;
 /**
  * An uploaded file exactly as received. Never modified after upload (GoBD):
  * parsed and corrected data lives in the invoice, not here.
+ * The only field that changes is the processing status, which is bookkeeping about the file,
+ * not part of it.
  */
 @Entity
 @Table(name = "invoice_document")
@@ -48,6 +50,10 @@ public class InvoiceDocument {
     @Column(name = "uploaded_at", nullable = false, updatable = false)
     private Instant uploadedAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "processing_status", nullable = false, length = 20)
+    private ProcessingStatus processingStatus;
+
     protected InvoiceDocument() {
         // Required by JPA.
     }
@@ -68,11 +74,25 @@ public class InvoiceDocument {
         this.storageKey = storageKey;
         this.sourceFormat = sourceFormat;
         this.profile = profile;
+        this.processingStatus = ProcessingStatus.RECEIVED;
     }
 
     @PrePersist
     void onCreate() {
         this.uploadedAt = Instant.now();
+    }
+
+    // Queued (again) for processing, e.g. after an earlier attempt failed.
+    public void markReceived() {
+        this.processingStatus = ProcessingStatus.RECEIVED;
+    }
+
+    public void markProcessed() {
+        this.processingStatus = ProcessingStatus.PROCESSED;
+    }
+
+    public void markFailed() {
+        this.processingStatus = ProcessingStatus.FAILED;
     }
 
     public UUID getId() {
@@ -113,5 +133,9 @@ public class InvoiceDocument {
 
     public Instant getUploadedAt() {
         return uploadedAt;
+    }
+
+    public ProcessingStatus getProcessingStatus() {
+        return processingStatus;
     }
 }

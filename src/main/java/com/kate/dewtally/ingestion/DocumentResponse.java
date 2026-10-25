@@ -1,6 +1,7 @@
 package com.kate.dewtally.ingestion;
 
 import com.kate.dewtally.document.InvoiceDocument;
+import com.kate.dewtally.document.ProcessingStatus;
 import com.kate.dewtally.document.SourceFormat;
 
 import java.time.Instant;
@@ -9,6 +10,8 @@ import java.util.UUID;
 /**
  * What the API returns for an uploaded document.
  * The storage key is intentionally not exposed: it is an internal detail.
+ *
+ * @param invoiceId null while the document is being processed, or if it contains no invoice
  */
 public record DocumentResponse(
         UUID id,
@@ -19,6 +22,7 @@ public record DocumentResponse(
         SourceFormat sourceFormat,
         String profile,
         Instant uploadedAt,
+        ProcessingStatus processingStatus,
         UUID invoiceId
 ) {
 
@@ -32,6 +36,7 @@ public record DocumentResponse(
                 document.getSourceFormat(),
                 document.getProfile(),
                 document.getUploadedAt(),
+                document.getProcessingStatus(),
                 invoiceId);
     }
 }

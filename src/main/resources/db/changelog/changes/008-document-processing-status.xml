@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- Documents are processed in the background now, so each one needs a processing status. -->
+    <changeSet id="014-add-document-processing-status" author="kate">
+        <!-- Existing documents were processed synchronously during their upload. -->
+        <addColumn tableName="invoice_document">
+            <column name="processing_status" type="VARCHAR(20)" defaultValue="PROCESSED"
+                    remarks="RECEIVED, PROCESSED or FAILED">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <sql>
+            ALTER TABLE invoice_document
+                ADD CONSTRAINT ck_invoice_document_processing_status
+                    CHECK (processing_status IN ('RECEIVED', 'PROCESSED', 'FAILED'));
+        </sql>
+        <rollback>
+            <dropColumn tableName="invoice_document" columnName="processing_status"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
