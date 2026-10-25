@@ -25,17 +25,32 @@ In these cases a value that is not printed must stay empty: calculating it count
 
 ## Running
 
-    .\mvnw.cmd test -Dtest=ExtractionEval#zugferdSamples -Dai=true
+    .\mvnw.cmd test -Dtest=ExtractionEval -Dai=true
     .\mvnw.cmd test -Dtest=ExtractionEval#hardCases -Dai=true
+    .\mvnw.cmd test -Dtest=ExtractionEval -Dai=true "-Dspring.ai.openai.chat.model=<MODEL>"
 
 Reports are written to `target/evals/`; snapshots worth keeping go to `results/`.
 
+## Regression check
+
+The eval fails (after writing the report) if:
+
+- any wrong value in a critical field has confidence ≥ 0.8 ("confidently wrong"),
+- any invoice could not be processed,
+- less than 95 % of all fields are correct.
+
+Critical fields decide how much is paid, to whom and when: amounts, IBAN, invoice number, dates,
+VAT ID. `supplierName` and `lineCount` are low risk: other checks catch them (suppliers are matched
+by VAT ID first; the line sum check catches missing lines). Omissions (a printed value returned empty)
+are reported separately: an empty field is visible to rules and people, a wrong value is not.
+
 ## Results
 
-| Run        | Model      | ZUGFeRD samples | Hard cases | Confidently wrong | Sent to review |
-|------------|------------|----------------:|-----------:|------------------:|---------------:|
-| 2026-10-25 | gpt-5-mini |         18 / 18 |      6 / 6 |                 0 |        1 of 24 |
-| 2026-10-25 | gpt-5-nano |         16 / 18 |      5 / 6 |                 0 |       15 of 24 |
+| Run                    | Model      | ZUGFeRD samples | Hard cases | Confidently wrong | Sent to review |
+|------------------------|------------|----------------:|-----------:|------------------:|---------------:|
+| 2026-10-25             | gpt-5-mini |         18 / 18 |      6 / 6 |                 0 |        1 of 24 |
+| 2026-10-25             | gpt-5-nano |         16 / 18 |      5 / 6 |                 0 |       15 of 24 |
+| 2026-10-25 (prompt v2) | gpt-5-mini |         18 / 18 |      7 / 7 |                 0 |        0 of 25 |
 
 Model choice: [ADR 0002](../docs/adr/0002-model-choice.md).
 

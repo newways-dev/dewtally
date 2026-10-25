@@ -44,13 +44,13 @@ No dates on purpose: the order matters, not the calendar.
 - [ ] Check that the visible PDF matches the embedded XML (a hybrid invoice can show one thing and pay another)
 - [ ] Detect invoices marked as already paid ("bereits beglichen", "bereits bezahlt") to avoid paying twice
 
-## Layer 3 — Evals: measuring extraction quality
+## Layer 3 — Evals: measuring extraction quality ✅
 
 - [x] Test set of invoices with known correct answers: ZUGFeRD samples and hand-written hard cases
 - [x] Eval runner: accuracy per field, "confidently wrong" count, report as a table
 - [x] Compare models with numbers, not impressions (ADR 0002: gpt-5-mini vs. gpt-5-nano)
-- [ ] Prompt: amount due vs. gross amount for partial invoices with prepayments (found by evals)
-- [ ] Track results over time to catch regressions
+- [x] Prompt: amount due vs. gross amount for partial invoices with prepayments (found by evals)
+- [x] Regression check: the eval fails on confident mistakes in critical fields
 
 ## Layer 4 — Production readiness
 

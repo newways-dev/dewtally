@@ -29,14 +29,15 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Measures how well the language model extracts invoice data. Costs money and is not deterministic,
- * so it is not part of the normal build. Two sets:
+ * Measures how well the language model extracts invoice data, and fails if it got worse.
+ * Costs money and is not deterministic, so it is not part of the normal build. Two sets:
  * <ul>
  *   <li>ZUGFeRD samples: the embedded XML is the correct answer for the visible text.
  *       {@code .\mvnw.cmd test -Dtest=ExtractionEval#zugferdSamples -Dai=true}</li>
  *   <li>Hard cases: hand-written invoices with traps ({@link HardCases}).
  *       {@code .\mvnw.cmd test -Dtest=ExtractionEval#hardCases -Dai=true}</li>
  * </ul>
+ * The report is always written; the regression check runs afterwards.
  */
 @SpringBootTest(properties = "dewtally.validation.kosit.enabled=false")
 @Import(TestcontainersConfiguration.class)
@@ -45,6 +46,14 @@ class ExtractionEval {
 
     private static final Path INVOICES = Path.of("evals", "zugferd");
     private static final Path REPORTS = Path.of("target", "evals");
+    // Shown for a missing value; also how an omission is recognised.
+    private static final String EMPTY = "—";
+    // Regression check: below this share of correct fields the run fails.
+    private static final double MIN_FIELD_ACCURACY = 0.95;
+    // A wrong value here is caught by other checks and cannot send money to the wrong place:
+    // suppliers are matched by VAT ID first (a wrong name only raises DT-UNKNOWN-SUPPLIER),
+    // and a wrong line count shows up in the line sum check.
+    private static final Set<String> LOW_RISK_FIELDS = Set.of("supplierName", "lineCount");
 
     @Autowired
     private InvoiceParser parser;
@@ -73,7 +82,7 @@ class ExtractionEval {
         exact(results, "issueDate", expected.issueDate(), got.issueDate());
         if (strict && expected.dueDate() == null) {
             // "Zahlbar innerhalb von 30 Tagen" has no date; calculating one is inventing a value.
-            results.add(new FieldResult("dueDate", got.dueDate() == null, "—", show(got.dueDate())));
+            results.add(new FieldResult("dueDate", got.dueDate() == null, EMPTY, show(got.dueDate())));
         } else {
             exact(results, "dueDate", expected.dueDate(), got.dueDate());
         }
@@ -94,7 +103,7 @@ class ExtractionEval {
             if (strict && expectedSum == null) {
                 // No net line amounts printed: the model must leave them empty, not calculate or copy gross.
                 BigDecimal actualSum = lineNetSum(actual);
-                results.add(new FieldResult("lineNetSum", actualSum == null, "—", show(actualSum)));
+                results.add(new FieldResult("lineNetSum", actualSum == null, EMPTY, show(actualSum)));
             } else {
                 amount(results, "lineNetSum", expectedSum, lineNetSum(actual));
             }
@@ -156,6 +165,7 @@ class ExtractionEval {
 
     // Allowances and charges: "none" and 0 are the same. Counted only if one side has a value,
     // so an invented discount (e.g. Skonto taken as a discount) is a mistake.
+    // A missing discount shows as 0 and counts as a wrong value: it makes the line sum check fail silently.
     private static void optionalAmount(List<FieldResult> results, String field,
                                        BigDecimal expected, BigDecimal actual) {
         BigDecimal e = expected == null ? BigDecimal.ZERO : expected;
@@ -172,7 +182,7 @@ class ExtractionEval {
 
     private static String show(Object value) {
         if (value == null) {
-            return "—";
+            return EMPTY;
         }
         return value instanceof BigDecimal amount ? amount.toPlainString() : value.toString();
     }
@@ -187,15 +197,15 @@ class ExtractionEval {
     }
 
     private static String percent(int part, int whole) {
-        return whole == 0 ? "—" : Math.round(100.0 * part / whole) + " %";
+        return whole == 0 ? EMPTY : Math.round(100.0 * part / whole) + " %";
     }
-
-    // ---------- runs ----------
 
     // Keeps markdown tables intact.
     private static String cell(String value) {
-        return value == null ? "—" : value.replace("|", "\\|").replace("\n", " ");
+        return value == null ? EMPTY : value.replace("|", "\\|").replace("\n", " ");
     }
+
+    // ---------- runs ----------
 
     @Test
     void zugferdSamples() throws IOException {
@@ -213,6 +223,7 @@ class ExtractionEval {
             results.add(evaluatePdf(file));
         }
         write("ZUGFeRD samples", results, REPORTS.resolve("zugferd-report.md"));
+        assertNoRegression("ZUGFeRD samples", results);
     }
 
     @Test
@@ -223,6 +234,7 @@ class ExtractionEval {
             results.add(evaluateText(hardCase.name(), hardCase.expected(), hardCase.text(), true));
         }
         write("Hard cases", results, REPORTS.resolve("hard-cases-report.md"));
+        assertNoRegression("Hard cases", results);
     }
 
     private InvoiceResult evaluatePdf(Path file) {
@@ -251,8 +263,6 @@ class ExtractionEval {
         }
     }
 
-    // ---------- report ----------
-
     private void write(String title, List<InvoiceResult> results, Path file) throws IOException {
         String report = report(title, results);
         Files.createDirectories(file.getParent());
@@ -261,7 +271,47 @@ class ExtractionEval {
         System.out.println("Report written to " + file.toAbsolutePath());
     }
 
+    // ---------- regression check ----------
+
+    private Stats stats(List<InvoiceResult> results) {
+        int fields = 0;
+        int correctFields = 0;
+        for (InvoiceResult result : results) {
+            for (FieldResult field : result.fields()) {
+                fields++;
+                if (field.correct()) {
+                    correctFields++;
+                }
+            }
+        }
+        long allCorrect = results.stream().filter(InvoiceResult::allCorrect).count();
+        // The dangerous case: a wrong critical value while the model was sure, so no person would look at it.
+        long confidentlyWrong = results.stream()
+                .filter(InvoiceResult::hasCriticalWrongValue)
+                .filter(result -> result.confidence() >= minConfidence)
+                .count();
+        long withOmissions = results.stream().filter(InvoiceResult::hasOmission).count();
+        long failed = results.stream().filter(result -> result.error() != null).count();
+        return new Stats(fields, correctFields, allCorrect, confidentlyWrong, withOmissions, failed);
+    }
+
+    private void assertNoRegression(String title, List<InvoiceResult> results) {
+        Stats stats = stats(results);
+        assertThat(stats.failed())
+                .as(title + ": invoices that could not be processed (see report)")
+                .isZero();
+        assertThat(stats.confidentlyWrong())
+                .as(title + ": wrong critical values with confidence >= " + minConfidence + " (see report)")
+                .isZero();
+        assertThat(stats.fieldAccuracy())
+                .as(title + ": share of correct fields (see report)")
+                .isGreaterThanOrEqualTo(MIN_FIELD_ACCURACY);
+    }
+
+    // ---------- report ----------
+
     private String report(String title, List<InvoiceResult> results) {
+        Stats stats = stats(results);
         StringBuilder md = new StringBuilder();
         md.append("# Extraction eval: ").append(title).append("\n\n");
         md.append("- Model: `").append(model).append("`\n");
@@ -281,28 +331,26 @@ class ExtractionEval {
             }
         }
         md.append("## Accuracy per field\n\n| Field | Correct | Total | Accuracy |\n|---|---:|---:|---:|\n");
-        perField.forEach((field, counts) -> md.append("| ").append(field).append(" | ").append(counts[0])
-                .append(" | ").append(counts[1]).append(" | ").append(percent(counts[0], counts[1])).append(" |\n"));
-
-        long failed = results.stream().filter(result -> result.error() != null).count();
-        long allCorrect = results.stream().filter(InvoiceResult::allCorrect).count();
-        // The dangerous case: wrong, but the model was sure, so no person would look at it.
-        long confidentlyWrong = results.stream()
-                .filter(result -> result.error() == null && !result.allCorrect())
-                .filter(result -> result.confidence() >= minConfidence)
-                .count();
+        perField.forEach((field, counts) -> md.append("| ").append(field)
+                .append(LOW_RISK_FIELDS.contains(field) ? " (low risk)" : "")
+                .append(" | ").append(counts[0]).append(" | ").append(counts[1]).append(" | ")
+                .append(percent(counts[0], counts[1])).append(" |\n"));
 
         md.append("\n## Summary\n\n");
-        md.append("- Invoices fully correct: ").append(allCorrect).append(" of ").append(results.size())
-                .append(" (").append(percent((int) allCorrect, results.size())).append(")\n");
-        md.append("- **Confidently wrong** (mistake, but confidence ≥ ").append(minConfidence).append("): ")
-                .append(confidentlyWrong).append("\n");
-        md.append("- Failed to process: ").append(failed).append("\n");
+        md.append("- Invoices fully correct: ").append(stats.allCorrect()).append(" of ").append(results.size())
+                .append(" (").append(percent((int) stats.allCorrect(), results.size())).append(")\n");
+        md.append("- Fields correct: ").append(stats.correctFields()).append(" of ").append(stats.fields())
+                .append(" (").append(percent(stats.correctFields(), stats.fields())).append(", minimum ")
+                .append(Math.round(MIN_FIELD_ACCURACY * 100)).append(" %)\n");
+        md.append("- **Confidently wrong** (wrong value in a critical field, confidence ≥ ").append(minConfidence)
+                .append("): ").append(stats.confidentlyWrong()).append(" (must be 0)\n");
+        md.append("- With omissions (value printed but returned empty): ").append(stats.withOmissions()).append("\n");
+        md.append("- Failed to process: ").append(stats.failed()).append(" (must be 0)\n");
 
         md.append("\n## Invoices\n\n| Invoice | Confidence | Result |\n|---|---:|---|\n");
         for (InvoiceResult result : results) {
             md.append("| ").append(result.name()).append(" | ")
-                    .append(result.error() == null ? String.format(Locale.ROOT, "%.2f", result.confidence()) : "—")
+                    .append(result.error() == null ? String.format(Locale.ROOT, "%.2f", result.confidence()) : EMPTY)
                     .append(" | ").append(summary(result)).append(" |\n");
         }
 
@@ -317,7 +365,9 @@ class ExtractionEval {
             md.append("**").append(result.name()).append("** (confidence ")
                     .append(String.format(Locale.ROOT, "%.2f", result.confidence())).append(")\n\n");
             for (FieldResult field : wrong) {
-                md.append("- ").append(field.field()).append(": expected `").append(cell(field.expected()))
+                String kind = field.omitted() ? "omitted " : field.criticalWrongValue() ? "wrong " : "wrong (low risk) ";
+                md.append("- ").append(kind).append(field.field())
+                        .append(": expected `").append(cell(field.expected()))
                         .append("`, got `").append(cell(field.actual())).append("`\n");
             }
             md.append("\n");
@@ -329,6 +379,21 @@ class ExtractionEval {
     }
 
     record FieldResult(String field, boolean correct, String expected, String actual) {
+
+        // Empty although the invoice has a value: visible to rules and people, unlike a wrong value.
+        boolean omitted() {
+            return !correct && EMPTY.equals(actual);
+        }
+
+        // A value that is there but wrong (or invented): nobody would notice it.
+        boolean wrongValue() {
+            return !correct && !omitted();
+        }
+
+        // A wrong value in a field that decides how much is paid, to whom and when.
+        boolean criticalWrongValue() {
+            return wrongValue() && !LOW_RISK_FIELDS.contains(field);
+        }
     }
 
     record InvoiceResult(String name, double confidence, List<FieldResult> fields, String error) {
@@ -339,6 +404,25 @@ class ExtractionEval {
 
         boolean allCorrect() {
             return error == null && fields.stream().allMatch(FieldResult::correct);
+        }
+
+        boolean hasCriticalWrongValue() {
+            return fields.stream().anyMatch(FieldResult::criticalWrongValue);
+        }
+
+        boolean hasOmission() {
+            return fields.stream().anyMatch(FieldResult::omitted);
+        }
+    }
+
+    /**
+     * Numbers for the summary and the regression check.
+     */
+    record Stats(int fields, int correctFields, long allCorrect, long confidentlyWrong,
+                 long withOmissions, long failed) {
+
+        double fieldAccuracy() {
+            return fields == 0 ? 0 : (double) correctFields / fields;
         }
     }
 }

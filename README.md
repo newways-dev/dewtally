@@ -8,8 +8,8 @@ they must also send them. dewtally takes incoming invoices, reads them, checks t
 official XRechnung rules and the company's own supplier master data, and tells you which invoices are fine, which need
 a human look and which are broken — and why.
 
-> Portfolio project, built step by step. Layers 1 (structured e-invoices) and 2 (AI extraction and review) are done;
-> measuring AI quality with evals is next. See [ROADMAP.md](ROADMAP.md).
+> Portfolio project, built step by step. Layers 1 (structured e-invoices), 2 (AI extraction and review) and
+> 3 (evals: measuring AI quality) are done; production readiness is next. See [ROADMAP.md](ROADMAP.md).
 
 ## What it does today
 
@@ -29,6 +29,8 @@ a human look and which are broken — and why.
 - **Fraud protection**: new IBANs need a second person to verify them; an invoice with a changed IBAN can only be
   accepted with an explicit, documented confirmation.
 - **Data protection**: IBANs, e-mails and phone numbers are masked before text is sent to the model.
+- **Measured AI quality**: an eval suite (real ZUGFeRD samples + hand-written traps) reports accuracy per field
+  and fails on confident mistakes in fields that decide payment ([evals](evals/README.md)).
 - **Errors** in the standard RFC 9457 format (`application/problem+json`).
 - **Multi-tenant from day one**: every table carries `tenant_id`.
 
@@ -64,6 +66,7 @@ parts can be moved into separate services later (AI extraction will run in its o
 | PDF                  | Apache PDFBox                                       |
 | AI                   | Spring AI with OpenAI (structured output)           |
 | Tests                | JUnit 5, AssertJ, Mockito, MockMvc, Testcontainers  |
+| AI evals             | Own eval suite on ZUGFeRD samples and hard cases    |
 | CI                   | GitHub Actions (`mvn verify` on every pull request) |
 
 ## Run locally
@@ -127,6 +130,14 @@ curl -X POST -H "X-Tenant-Id: $TENANT" -H "X-User-Name: anna" -H "Content-Type: 
 Integration tests run against a real PostgreSQL in Docker (Testcontainers), so Docker must be running.
 Tests that call the real model are skipped unless started with `-Dai=true`.
 
+AI evals call the real model, cost a little money and are not part of the normal build:
+
+```bash
+./mvnw test -Dtest=ExtractionEval -Dai=true
+```
+
+See [evals/README.md](evals/README.md) for the test set, the regression check and results.
+
 ## Design decisions
 
 - **Official validator instead of re-implementing XRechnung rules.** Hundreds of rules, updated regularly. Own rules
@@ -138,6 +149,11 @@ Tests that call the real model are skipped unless started with `-Dai=true`.
   document, never from the model.
 - **Data minimisation.** Values the model does not need are masked before the text leaves the system
   ([ADR 0001](docs/adr/0001-llm-data-protection.md)).
+- **Model choice by measurement, not by price list.** A cheaper model was less sure of itself and would have sent
+  15 of 24 invoices to manual review instead of 1; review time costs more than API calls
+  ([ADR 0002](docs/adr/0002-model-choice.md)).
+- **Not all mistakes are equal.** The eval fails on confident mistakes in fields that decide payment (amounts, IBAN,
+  dates); a wrong supplier name is caught by other checks and only lowers the score.
 - **Liquibase with XML changelogs; Hibernate only validates the schema.** Database changes are explicit and reviewable.
 - **Idempotent upload.** A unique constraint on `(tenant_id, sha256)` makes double uploads harmless, even when they
   race.
@@ -148,7 +164,7 @@ Tests that call the real model are skipped unless started with `-Dai=true`.
 
 1. ✅ Core: upload and check structured e-invoices
 2. ✅ AI extraction for plain PDF invoices, review, supplier master data
-3. Evals: measuring extraction quality with numbers
+3. ✅ Evals: measuring extraction quality with numbers
 4. Production readiness: worker, RabbitMQ, outbox, metrics, Grafana
 5. SaaS: login, roles, tenant isolation
 6. Azure deployment with Terraform
@@ -159,3 +175,5 @@ Details: [ROADMAP.md](ROADMAP.md)
 ## Licences
 
 The XRechnung validator configuration in `kosit/` is published by KoSIT under the Apache License 2.0.
+The sample invoices in `evals/zugferd/` come from the [ZUGFeRD corpus](https://github.com/ZUGFeRD/corpus),
+Apache License 2.0.
