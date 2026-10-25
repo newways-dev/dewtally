@@ -19,8 +19,8 @@ class DocumentReceivedListener {
         this.processor = processor;
     }
 
-    // The processor never throws, so every message is acknowledged; failures end up as FAILED documents.
-    // Retries and a dead letter queue follow in layer 4, step 3.
+    // Returning normally acknowledges the message. Throwing (a temporary problem, or a payload that is
+    // not a document id) makes Spring retry it; after the last retry it goes to the dead letter queue.
     @RabbitListener(queues = ProcessingQueue.NAME)
     void onDocumentReceived(String documentId) {
         processor.process(UUID.fromString(documentId));
