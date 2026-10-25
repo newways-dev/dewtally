@@ -1,3 +1,21 @@
+# Development: ".\mvnw.cmd spring-boot:run" starts only postgres and rabbitmq (services without a profile).
+# Full stack in containers: ".\mvnw.cmd package -DskipTests", then "docker compose --profile app up -d --build".
+
+# Settings shared by api and worker
+x-app: &app
+  image: dewtally:local
+  restart: unless-stopped
+  depends_on: [ postgres, rabbitmq ]
+  volumes:
+    - documents:/app/data
+  environment: &app-env
+    # Inside Docker the database and broker are reached by service name, not localhost
+    SPRING_DOCKER_COMPOSE_ENABLED: "false"
+    SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/dewtally
+    SPRING_DATASOURCE_USERNAME: dewtally
+    SPRING_DATASOURCE_PASSWORD: dewtally
+    SPRING_RABBITMQ_HOST: rabbitmq
+
 services:
   postgres:
     image: postgres:17
@@ -7,6 +25,7 @@ services:
       POSTGRES_PASSWORD: dewtally
     ports:
       - "5432:5432"
+
   rabbitmq:
     # "management" adds a web UI on http://localhost:15672 to watch the queues
     image: rabbitmq:4-management
@@ -16,3 +35,31 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+
+  api:
+    <<: *app
+    profiles: [ app ]
+    build: .
+    environment:
+      <<: *app-env
+      SPRING_PROFILES_ACTIVE: api
+    ports:
+      - "8080:8080"
+
+  worker:
+    <<: *app
+    profiles: [ app ]
+    depends_on: [ postgres, rabbitmq, api ]
+    # The worker calls the language model: OPENAI_API_KEY comes from the local .env (never committed)
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      <<: *app-env
+      SPRING_PROFILES_ACTIVE: worker
+    # Untrusted PDFs are parsed here: a broken file can use up at most this much
+    mem_limit: 1g
+    cpus: 1.0
+
+volumes:
+  documents:

@@ -10,7 +10,8 @@ import java.util.UUID;
  * Takes documents from the queue and processes them in the background.
  */
 @Component
-@ConditionalOnProperty(name = "dewtally.processing.async", havingValue = "true")
+// Only where documents are processed: the worker, or the all-in-one app during development.
+@ConditionalOnProperty(name = {"dewtally.processing.async", "dewtally.processing.listener-enabled"}, havingValue = "true")
 class DocumentReceivedListener {
 
     private final DocumentProcessor processor;

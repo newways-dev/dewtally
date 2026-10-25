@@ -9,6 +9,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  */
 @Configuration(proxyBeanMethods = false)
 @EnableScheduling
-@ConditionalOnProperty(name = "dewtally.processing.async", havingValue = "true")
+// Only where uploads are written: the API, or the all-in-one app during development.
+@ConditionalOnProperty(name = {"dewtally.processing.async", "dewtally.outbox.relay-enabled"}, havingValue = "true")
 class OutboxConfig {
 }
