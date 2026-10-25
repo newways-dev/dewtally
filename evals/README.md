@@ -29,3 +29,12 @@ In these cases a value that is not printed must stay empty: calculating it count
     .\mvnw.cmd test -Dtest=ExtractionEval#hardCases -Dai=true
 
 Reports are written to `target/evals/`; snapshots worth keeping go to `results/`.
+
+## Results
+
+| Run        | Model      | ZUGFeRD samples | Hard cases | Confidently wrong | Sent to review |
+|------------|------------|----------------:|-----------:|------------------:|---------------:|
+| 2026-10-25 | gpt-5-mini |         18 / 18 |      6 / 6 |                 0 |        1 of 24 |
+| 2026-10-25 | gpt-5-nano |         16 / 18 |      5 / 6 |                 0 |       15 of 24 |
+
+Model choice: [ADR 0002](../docs/adr/0002-model-choice.md).
