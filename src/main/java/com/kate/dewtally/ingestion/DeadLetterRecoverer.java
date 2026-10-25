@@ -16,7 +16,8 @@ import java.util.UUID;
  * which RabbitMQ moves to the dead letter queue. Spring Boot uses this bean for listener retries.
  */
 @Component
-@ConditionalOnProperty(name = "dewtally.processing.async", havingValue = "true")
+// Only where documents are processed: the worker, or the all-in-one app during development.
+@ConditionalOnProperty(name = {"dewtally.processing.async", "dewtally.processing.listener-enabled"}, havingValue = "true")
 class DeadLetterRecoverer implements MessageRecoverer {
 
     private static final Logger log = LoggerFactory.getLogger(DeadLetterRecoverer.class);

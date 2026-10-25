@@ -136,6 +136,23 @@ curl -X POST -H "X-Tenant-Id: $TENANT" -H "X-User-Name: anna" -H "Content-Type: 
      http://localhost:8080/api/invoices/$INVOICE_ID/accept
 ```
 
+## Run as containers (api + worker)
+
+The same image runs in two roles: the **api** accepts uploads and serves the API; the **worker** parses
+untrusted files and calls the language model, limited to 1 GB of memory and 1 CPU. A broken PDF can
+take down at most the worker: it exits on `OutOfMemoryError`, Docker restarts it, and the unacknowledged
+message goes back to the queue. The API keeps working, and uploads wait in the queue until a worker is back.
+
+```bash
+./mvnw package -DskipTests
+docker compose --profile app up -d --build
+docker stats --no-stream        # the worker shows its 1 GiB limit
+```
+
+Uploaded files live in a Docker volume shared by both (Azure Blob Storage in production).
+If a container cannot reach another one by name (`UnknownHostException: rabbitmq`), recreate them all:
+`docker compose --profile app up -d --force-recreate`.
+
 ## Tests
 
 ```bash
@@ -178,6 +195,10 @@ See [evals/README.md](evals/README.md) for the test set, the regression check an
   race.
 - **DTOs in the API, never entities.** The JSON contract is stable and does not leak internal fields.
 - **Tenant in every business table now**, so isolation (and later Row-Level Security) is not a rewrite.
+- **Untrusted files are parsed in a separate, limited worker.** Java cannot stop a stuck thread, so real
+  isolation needs a separate process: the worker has memory and CPU limits and can crash without taking the API
+  with it. Same code base and image, two Spring profiles: a modular monolith with a background worker,
+  not microservices.
 
 ## Roadmap
 

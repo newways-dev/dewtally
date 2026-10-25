@@ -57,9 +57,9 @@ No dates on purpose: the order matters, not the calendar.
 
 - [x] Background processing through RabbitMQ: upload answers 202, status via GET /api/documents/{id}
 - [x] Transactional outbox: document and queue message saved in one transaction, so no upload gets lost
-- [ ] Retries and a dead letter queue for poison messages
-- [ ] AI extraction in a separate worker, connected via RabbitMQ
-- [ ] Parse untrusted files (PDF, XML) in the isolated worker with memory and CPU limits
+- [x] Retries and a dead letter queue for poison messages
+- [x] AI extraction in a separate worker, connected via RabbitMQ
+- [x] Parse untrusted files (PDF, XML) in the isolated worker with memory and CPU limits
 - [ ] Metrics and dashboards (Micrometer, Prometheus, Grafana)
 
 ## Layer 5 — SaaS

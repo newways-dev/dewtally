@@ -17,7 +17,8 @@ import java.util.List;
  * the message as sent fails, it is sent again, so consumers must be idempotent.
  */
 @Component
-@ConditionalOnProperty(name = "dewtally.processing.async", havingValue = "true")
+// Only where uploads are written: the API, or the all-in-one app during development.
+@ConditionalOnProperty(name = {"dewtally.processing.async", "dewtally.outbox.relay-enabled"}, havingValue = "true")
 class OutboxRelay {
 
     private static final Logger log = LoggerFactory.getLogger(OutboxRelay.class);
