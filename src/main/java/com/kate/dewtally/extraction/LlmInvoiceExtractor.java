@@ -33,14 +33,20 @@ public class LlmInvoiceExtractor {
             - Dates: YYYY-MM-DD. German dates like 14.03.2027 become 2027-03-14.
             - Amounts: plain numbers with a dot as decimal separator and no thousands separator.
               German 1.428,00 EUR becomes 1428.00.
+            - If amounts are printed with a minus sign (e.g. a correction invoice), keep the minus sign
+              in netAmount, taxAmount and grossAmount.
             - netAmount is the total without VAT (Netto, Nettobetrag, Summe netto).
               taxAmount is the total VAT (MwSt., USt., Umsatzsteuer).
-              grossAmount is the total including VAT (Brutto, Gesamtbetrag, Rechnungsbetrag, zu zahlen).
+              grossAmount is the invoice total including VAT (Brutto, Gesamtbetrag, Rechnungsbetrag).
+            - grossAmount is NOT the amount due. If prepayments or partial payments are deducted
+              (Anzahlung, Abschlagszahlung, bereits bezahlt), the remaining "zu zahlen" or
+              "Zahlbetrag" is smaller than grossAmount: return the total before that deduction.
             - allowanceTotal: discounts on the whole invoice that are not invoice lines (Rabatt, Nachlass).
               chargeTotal: surcharges on the whole invoice that are not invoice lines
               (Versandkosten, Fracht, Verpackung). Both as positive numbers, empty string if there are none.
               If shipping is listed as a normal invoice line, it is a line, not a charge.
               Skonto (discount for early payment) is a payment term, not an allowance: never put it here.
+              A prepayment (Anzahlung) is not an allowance either.
             - supplierName and supplierVatId belong to the seller who issued the invoice, not to the buyer.
             - iban: the seller's bank account. Return the placeholder exactly as written, e.g. [IBAN_1].
               If several IBANs appear, choose the one the invoice asks to pay to.

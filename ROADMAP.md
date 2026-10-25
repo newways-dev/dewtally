@@ -42,6 +42,7 @@ No dates on purpose: the order matters, not the calendar.
 - [ ] Mask names and addresses before sending text to the model (needs NER)
 - [ ] HTTP client timeout for Spring AI calls (instead of only the virtual-thread time limit)
 - [ ] Check that the visible PDF matches the embedded XML (a hybrid invoice can show one thing and pay another)
+- [ ] Detect invoices marked as already paid ("bereits beglichen", "bereits bezahlt") to avoid paying twice
 
 ## Layer 3 — Evals: measuring extraction quality
 
