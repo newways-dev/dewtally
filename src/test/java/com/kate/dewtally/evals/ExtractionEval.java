@@ -9,6 +9,7 @@ import com.kate.dewtally.extraction.PdfTextExtractor;
 import com.kate.dewtally.invoice.InvoiceData;
 import com.kate.dewtally.parsing.InvoiceParser;
 import com.kate.dewtally.parsing.ParsedInvoice;
+import com.kate.dewtally.parsing.ParsedLine;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,11 +29,14 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Measures how well the language model extracts invoice data.
- * ZUGFeRD PDFs carry the correct answer in their embedded XML. The model only gets the visible text;
- * its answer is compared with the XML field by field. Costs money and is not deterministic,
- * so it is not part of the normal build:
- * {@code .\mvnw.cmd test -Dtest=ExtractionEval -Dai=true}
+ * Measures how well the language model extracts invoice data. Costs money and is not deterministic,
+ * so it is not part of the normal build. Two sets:
+ * <ul>
+ *   <li>ZUGFeRD samples: the embedded XML is the correct answer for the visible text.
+ *       {@code .\mvnw.cmd test -Dtest=ExtractionEval#zugferdSamples -Dai=true}</li>
+ *   <li>Hard cases: hand-written invoices with traps ({@link HardCases}).
+ *       {@code .\mvnw.cmd test -Dtest=ExtractionEval#hardCases -Dai=true}</li>
+ * </ul>
  */
 @SpringBootTest(properties = "dewtally.validation.kosit.enabled=false")
 @Import(TestcontainersConfiguration.class)
@@ -40,7 +44,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ExtractionEval {
 
     private static final Path INVOICES = Path.of("evals", "zugferd");
-    private static final Path REPORT = Path.of("target", "evals", "extraction-report.md");
+    private static final Path REPORTS = Path.of("target", "evals");
 
     @Autowired
     private InvoiceParser parser;
@@ -56,14 +60,23 @@ class ExtractionEval {
 
     // ---------- comparison ----------
 
-    static List<FieldResult> compare(ParsedInvoice truth, ParsedInvoice actual) {
+    /**
+     * @param strict also check that the model leaves a field empty when the invoice does not contain it
+     *               (used for hand-written cases, where we know exactly what is printed)
+     */
+    static List<FieldResult> compare(ParsedInvoice truth, ParsedInvoice actual, boolean strict) {
         InvoiceData expected = truth.data();
         InvoiceData got = actual.data();
         List<FieldResult> results = new ArrayList<>();
 
         text(results, "invoiceNumber", expected.invoiceNumber(), got.invoiceNumber());
         exact(results, "issueDate", expected.issueDate(), got.issueDate());
-        exact(results, "dueDate", expected.dueDate(), got.dueDate());
+        if (strict && expected.dueDate() == null) {
+            // "Zahlbar innerhalb von 30 Tagen" has no date; calculating one is inventing a value.
+            results.add(new FieldResult("dueDate", got.dueDate() == null, "—", show(got.dueDate())));
+        } else {
+            exact(results, "dueDate", expected.dueDate(), got.dueDate());
+        }
         text(results, "currency", expected.currency(), got.currency());
         name(results, "supplierName", expected.supplierName(), got.supplierName());
         text(results, "supplierVatId", expected.supplierVatId(), got.supplierVatId());
@@ -76,8 +89,32 @@ class ExtractionEval {
         // Some profiles (BASIC WL, MINIMUM) have no lines in the XML even if the PDF shows them.
         if (!truth.lines().isEmpty()) {
             exact(results, "lineCount", truth.lines().size(), actual.lines().size());
+            // Catches gross prices taken as net line amounts.
+            BigDecimal expectedSum = lineNetSum(truth);
+            if (strict && expectedSum == null) {
+                // No net line amounts printed: the model must leave them empty, not calculate or copy gross.
+                BigDecimal actualSum = lineNetSum(actual);
+                results.add(new FieldResult("lineNetSum", actualSum == null, "—", show(actualSum)));
+            } else {
+                amount(results, "lineNetSum", expectedSum, lineNetSum(actual));
+            }
         }
         return results;
+    }
+
+    // Null if there are no lines or a line has no net amount.
+    private static BigDecimal lineNetSum(ParsedInvoice invoice) {
+        if (invoice.lines().isEmpty()) {
+            return null;
+        }
+        BigDecimal sum = BigDecimal.ZERO;
+        for (ParsedLine line : invoice.lines()) {
+            if (line.netAmount() == null) {
+                return null;
+            }
+            sum = sum.add(line.netAmount());
+        }
+        return sum;
     }
 
     // A field missing in the XML cannot be judged, so it is not counted.
@@ -153,7 +190,7 @@ class ExtractionEval {
         return whole == 0 ? "—" : Math.round(100.0 * part / whole) + " %";
     }
 
-    // ---------- run ----------
+    // ---------- runs ----------
 
     // Keeps markdown tables intact.
     private static String cell(String value) {
@@ -161,7 +198,7 @@ class ExtractionEval {
     }
 
     @Test
-    void measureExtractionQuality() throws IOException {
+    void zugferdSamples() throws IOException {
         List<Path> files;
         try (Stream<Path> stream = Files.list(INVOICES)) {
             files = stream.filter(path -> path.toString().toLowerCase(Locale.ROOT).endsWith(".pdf"))
@@ -173,41 +210,60 @@ class ExtractionEval {
         List<InvoiceResult> results = new ArrayList<>();
         for (Path file : files) {
             System.out.println("Evaluating " + file.getFileName() + " ...");
-            results.add(evaluate(file));
+            results.add(evaluatePdf(file));
         }
-
-        String report = report(results);
-        Files.createDirectories(REPORT.getParent());
-        Files.writeString(REPORT, report);
-        System.out.println(report);
-        System.out.println("Report written to " + REPORT.toAbsolutePath());
+        write("ZUGFeRD samples", results, REPORTS.resolve("zugferd-report.md"));
     }
 
-    // ---------- report ----------
+    @Test
+    void hardCases() throws IOException {
+        List<InvoiceResult> results = new ArrayList<>();
+        for (HardCases.Case hardCase : HardCases.ALL) {
+            System.out.println("Evaluating " + hardCase.name() + " ...");
+            results.add(evaluateText(hardCase.name(), hardCase.expected(), hardCase.text(), true));
+        }
+        write("Hard cases", results, REPORTS.resolve("hard-cases-report.md"));
+    }
 
-    private InvoiceResult evaluate(Path file) {
+    private InvoiceResult evaluatePdf(Path file) {
         String name = file.getFileName().toString();
         try {
             byte[] pdf = Files.readAllBytes(file);
             ParsedInvoice truth = parser.parse(SourceFormat.ZUGFERD, pdf)
                     .orElseThrow(() -> new IllegalStateException("No embedded invoice XML"));
-
             PdfText text = pdfTextExtractor.extract(pdf);
             if (!text.hasTextLayer()) {
                 return InvoiceResult.failed(name, "PDF has no text layer");
             }
+            return evaluateText(name, truth, text.text(), false);
+        } catch (Exception e) {
+            return InvoiceResult.failed(name, e.getClass().getSimpleName() + ": " + e.getMessage());
+        }
+    }
 
-            InvoiceExtraction extraction = extractor.extract(text.text());
-            return new InvoiceResult(name, extraction.confidence(), compare(truth, extraction.invoice()), null);
+    private InvoiceResult evaluateText(String name, ParsedInvoice truth, String text, boolean strict) {
+        try {
+            InvoiceExtraction extraction = extractor.extract(text);
+            return new InvoiceResult(name, extraction.confidence(), compare(truth, extraction.invoice(), strict), null);
         } catch (Exception e) {
             // One broken invoice must not stop the whole eval run.
             return InvoiceResult.failed(name, e.getClass().getSimpleName() + ": " + e.getMessage());
         }
     }
 
-    private String report(List<InvoiceResult> results) {
+    // ---------- report ----------
+
+    private void write(String title, List<InvoiceResult> results, Path file) throws IOException {
+        String report = report(title, results);
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, report);
+        System.out.println(report);
+        System.out.println("Report written to " + file.toAbsolutePath());
+    }
+
+    private String report(String title, List<InvoiceResult> results) {
         StringBuilder md = new StringBuilder();
-        md.append("# Extraction eval\n\n");
+        md.append("# Extraction eval: ").append(title).append("\n\n");
         md.append("- Model: `").append(model).append("`\n");
         md.append("- Run: ").append(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")))
                 .append("\n");
@@ -243,9 +299,9 @@ class ExtractionEval {
                 .append(confidentlyWrong).append("\n");
         md.append("- Failed to process: ").append(failed).append("\n");
 
-        md.append("\n## Invoices\n\n| File | Confidence | Result |\n|---|---:|---|\n");
+        md.append("\n## Invoices\n\n| Invoice | Confidence | Result |\n|---|---:|---|\n");
         for (InvoiceResult result : results) {
-            md.append("| ").append(result.file()).append(" | ")
+            md.append("| ").append(result.name()).append(" | ")
                     .append(result.error() == null ? String.format(Locale.ROOT, "%.2f", result.confidence()) : "—")
                     .append(" | ").append(summary(result)).append(" |\n");
         }
@@ -258,7 +314,8 @@ class ExtractionEval {
                 continue;
             }
             any = true;
-            md.append("**").append(result.file()).append("**\n\n");
+            md.append("**").append(result.name()).append("** (confidence ")
+                    .append(String.format(Locale.ROOT, "%.2f", result.confidence())).append(")\n\n");
             for (FieldResult field : wrong) {
                 md.append("- ").append(field.field()).append(": expected `").append(cell(field.expected()))
                         .append("`, got `").append(cell(field.actual())).append("`\n");
@@ -274,10 +331,10 @@ class ExtractionEval {
     record FieldResult(String field, boolean correct, String expected, String actual) {
     }
 
-    record InvoiceResult(String file, double confidence, List<FieldResult> fields, String error) {
+    record InvoiceResult(String name, double confidence, List<FieldResult> fields, String error) {
 
-        static InvoiceResult failed(String file, String error) {
-            return new InvoiceResult(file, 0, List.of(), error);
+        static InvoiceResult failed(String name, String error) {
+            return new InvoiceResult(name, 0, List.of(), error);
         }
 
         boolean allCorrect() {
