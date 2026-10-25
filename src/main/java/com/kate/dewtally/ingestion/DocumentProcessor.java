@@ -15,7 +15,10 @@ import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.TransientDataAccessException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.CannotCreateTransactionException;
 
 import java.io.UncheckedIOException;
 import java.time.Duration;
@@ -25,7 +28,10 @@ import java.util.UUID;
 /**
  * Turns a stored document into an invoice: from the XML for structured e-invoices, with a language model
  * for plain PDFs. Called during the upload (synchronous mode) or by the queue listener (asynchronous mode).
- * Never throws: the outcome is the document's processing status.
+ * <p>
+ * Permanent problems (broken file, unreadable PDF, model failure) are handled here: the document ends up
+ * PROCESSED (possibly with an invoice for manual review) or FAILED. Temporary problems in the queue path
+ * are thrown as {@link TransientProcessingException}, so the message is retried.
  * Deliberately not @Transactional: the model call takes seconds, during which no database connection
  * should be held.
  */
@@ -66,6 +72,19 @@ public class DocumentProcessor {
         this.pdfBulkhead = new Bulkhead("pdf-parsing", pdfMaxConcurrent, pdfMaxQueued);
     }
 
+    // Problems that will probably go away on their own: worth a retry.
+    static boolean isTransient(Throwable error) {
+        for (Throwable t = error; t != null; t = t.getCause()) {
+            if (t instanceof BulkheadFullException
+                    || t instanceof TransientDataAccessException
+                    || t instanceof DataAccessResourceFailureException
+                    || t instanceof CannotCreateTransactionException) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @PreDestroy
     void shutdown() {
         pdfBulkhead.close();
@@ -74,6 +93,8 @@ public class DocumentProcessor {
     /**
      * Entry point for the queue: loads the document and its file.
      * Safe to call twice for the same document: a message can be delivered more than once.
+     *
+     * @throws TransientProcessingException for temporary problems; the message is then retried
      */
     public UUID process(UUID documentId) {
         Optional<InvoiceDocument> found = documents.findById(documentId);
@@ -98,13 +119,32 @@ public class DocumentProcessor {
             finish(document, false);
             return null;
         }
-        return process(document, content);
+        return run(document, content, true);
     }
 
     /**
-     * Processes a document whose content is already in memory (the upload request).
+     * Processes a document whose content is already in memory (the upload request). Never throws.
      */
     UUID process(InvoiceDocument document, byte[] content) {
+        return run(document, content, false);
+    }
+
+    /**
+     * Called when every retry has failed: the document is marked FAILED, unless an invoice
+     * was created in the meantime. Uploading the same file again starts over.
+     */
+    public void giveUp(UUID documentId) {
+        documents.findById(documentId).ifPresent(document -> {
+            boolean hasInvoice = invoiceService.findIdByDocument(document.getTenantId(), documentId).isPresent();
+            finish(document, hasInvoice);
+        });
+    }
+
+    /**
+     * @param retryable true in the queue path: temporary problems are thrown so the message is retried;
+     *                  false during the upload request, where there is nobody to retry
+     */
+    private UUID run(InvoiceDocument document, byte[] content, boolean retryable) {
         try {
             UUID invoiceId = document.getSourceFormat() == SourceFormat.PDF
                     ? importPdfInvoice(document, content)
@@ -112,6 +152,10 @@ public class DocumentProcessor {
             finish(document, true);
             return invoiceId;
         } catch (RuntimeException e) {
+            if (retryable && isTransient(e)) {
+                log.warn("Temporary problem with document {}, it will be retried: {}", document.getId(), e.toString());
+                throw new TransientProcessingException(document.getId(), e);
+            }
             log.error("Processing of document {} failed; uploading the file again retries", document.getId(), e);
             // A parallel attempt may have succeeded in the meantime.
             Optional<UUID> existing = invoiceService.findIdByDocument(document.getTenantId(), document.getId());
@@ -151,7 +195,7 @@ public class DocumentProcessor {
         try {
             text = pdfBulkhead.call(() -> pdfTextExtractor.extract(content), pdfTimeout);
         } catch (BulkheadFullException e) {
-            // Server is busy, not a problem of the file: the document is marked FAILED and can be retried.
+            // Server is busy, not a problem of the file: retried in the queue path.
             log.warn("PDF parsing is at capacity, document {} is not processed now", document.getId());
             throw e;
         } catch (PdfReadException | TimeLimitExceededException e) {
