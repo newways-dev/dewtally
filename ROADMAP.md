@@ -38,16 +38,17 @@ No dates on purpose: the order matters, not the calendar.
 - [ ] Supplier VAT ID check via VIES
 - [ ] Approval limits: invoices above a tenant-defined amount need a second approver
 - [ ] Allowances and charges with reason and VAT rate (today only totals)
-- [ ] ADR 0002: GoBD retention (8 years, originals unchanged) vs. DSGVO deletion
+- [ ] ADR 0003: GoBD retention (8 years, originals unchanged) vs. DSGVO deletion
 - [ ] Mask names and addresses before sending text to the model (needs NER)
 - [ ] HTTP client timeout for Spring AI calls (instead of only the virtual-thread time limit)
 - [ ] Check that the visible PDF matches the embedded XML (a hybrid invoice can show one thing and pay another)
 
 ## Layer 3 — Evals: measuring extraction quality
 
-- [ ] Test set of invoices with known correct answers (golden set)
-- [ ] Eval runner: accuracy per field, report as a table
-- [ ] Compare prompts and models with numbers, not impressions
+- [x] Test set of invoices with known correct answers: ZUGFeRD samples and hand-written hard cases
+- [x] Eval runner: accuracy per field, "confidently wrong" count, report as a table
+- [x] Compare models with numbers, not impressions (ADR 0002: gpt-5-mini vs. gpt-5-nano)
+- [ ] Prompt: amount due vs. gross amount for partial invoices with prepayments (found by evals)
 - [ ] Track results over time to catch regressions
 
 ## Layer 4 — Production readiness
