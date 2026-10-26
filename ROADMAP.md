@@ -46,6 +46,7 @@ No dates on purpose: the order matters, not the calendar.
 - [ ] Clean up sent outbox messages after a retention period
 - [ ] Non-blocking retries with delay queues (today the pause between retries blocks the consumer)
 - [ ] Alerts: dead letter queue not empty, outbox growing, model latency too high
+- [ ] Role management per tenant: an admin of a company assigns roles to its users (today in Keycloak only)
 
 ## Layer 3 — Evals: measuring extraction quality ✅
 
@@ -68,7 +69,7 @@ No dates on purpose: the order matters, not the calendar.
 
 - [x] Login with Keycloak (OpenID Connect); the API only accepts valid tokens
 - [x] Tenant and user taken from the token instead of the X-Tenant-Id / X-User-Name headers
-- [ ] Roles: clerk, approver, admin
+- [x] Roles: clerk, approver, admin; permission matrix with deny by default, 401 / 403 as problem details
 - [ ] Tenant isolation with PostgreSQL Row-Level Security
 
 ## Layer 6 — Cloud deployment
