@@ -9,13 +9,15 @@ official XRechnung rules and the company's own supplier master data, and tells y
 a human look and which are broken — and why.
 
 > Portfolio project, built step by step. Layers 1 (structured e-invoices), 2 (AI extraction and review),
-> 3 (evals: measuring AI quality) and 4 (production readiness) are done; SaaS (login, roles, tenant isolation)
-> is in progress. See [ROADMAP.md](ROADMAP.md).
+> 3 (evals: measuring AI quality) and 4 (production readiness) are done; SaaS is in progress (login, tenant from
+> the token and roles are done; Row-Level Security is next). See [ROADMAP.md](ROADMAP.md).
 
 ## What it does today
 
 - **Login**: every API call needs a token from Keycloak (OpenID Connect); the application never handles passwords.
   Company and user name come only from the token, so nobody can act for another company or person.
+- **Roles**: clerks upload and correct, approvers accept or reject, admins manage suppliers. Anything not explicitly
+  allowed is denied (see [Roles and permissions](#roles-and-permissions)).
 - **Upload** an invoice file (`POST /api/documents`). Uploads are idempotent: the same file twice is stored once
   (SHA-256 per tenant).
 - **Background processing**: the upload answers `202 Accepted` right away; a separate worker processes the document
@@ -159,6 +161,31 @@ curl -X POST -H "$BEN" -H "Content-Type: application/json" \
 Company and user name come only from the token: there is no header to choose a tenant. A user of another company
 gets `404` for anything that is not theirs; the change history shows the logged-in user's name.
 
+## Roles and permissions
+
+Roles are Keycloak realm roles and arrive in the token. Every endpoint is listed explicitly; any other `/api` call
+is denied, even for a logged-in user.
+
+| Action                                 | clerk | approver | admin |
+|----------------------------------------|:-----:|:--------:|:-----:|
+| Read invoices, documents and suppliers |  ✅   |    ✅    |  ✅   |
+| Upload an invoice                      |  ✅   |          |       |
+| Correct invoice data                   |  ✅   |          |       |
+| Accept or reject an invoice            |       |    ✅    |       |
+| Verify a supplier IBAN                 |       |    ✅    |  ✅   |
+| Add a supplier or IBAN, block, unblock |       |          |  ✅   |
+
+No token answers `401`, a missing role `403`, both as `application/problem+json`:
+
+```json
+{
+  "type": "about:blank",
+  "title": "Forbidden",
+  "status": 403,
+  "detail": "Your role does not allow this action"
+}
+```
+
 ## Run as containers (api + worker + monitoring)
 
 The same image runs in two roles: the **api** accepts uploads and serves the API; the **worker** parses
@@ -188,7 +215,8 @@ docker stats --no-stream        # the worker shows its 1 GiB limit
 
 Integration tests run against a real PostgreSQL and RabbitMQ in Docker (Testcontainers), so Docker must be running.
 Security tests simulate Keycloak-shaped tokens (test users anna, ben, carla), so no Keycloak is needed; a dedicated
-test proves that a user of one company can neither see nor change anything of another. Most tests process uploads
+test proves that a user of one company can neither see nor change anything of another, and another one checks the
+permission matrix role by role. Most tests process uploads
 synchronously; dedicated tests cover background processing, an unreachable RabbitMQ and the dead letter queue.
 Tests that call the real model are skipped unless started with `-Dai=true`.
 
@@ -234,6 +262,11 @@ See [evals/README.md](evals/README.md) for the test set, the regression check an
 - **The token decides, never the request.** Controllers get a `CurrentUser` built from the signed token; there is no
   header or field to pick a company or a user. The four-eyes check and the change history compare real, logged-in
   people. Another company's data answers `404`, not `403`, so its existence is not revealed.
+- **Separation of duties through roles.** The person who enters or corrects invoice data cannot release it for
+  payment, and the person who releases payments cannot change supplier bank data. Together with the four-eyes IBAN
+  check, one person alone cannot both plant a fake IBAN and pay to it.
+- **Deny by default.** The permission matrix lives in one place (`SecurityConfig`); a new endpoint is forbidden until
+  someone decides who may use it.
 - **Liquibase with XML changelogs; Hibernate only validates the schema.** Database changes are explicit and reviewable.
 - **Idempotent upload.** A unique constraint on `(tenant_id, sha256)` makes double uploads harmless, even when they
   race.
@@ -246,7 +279,7 @@ See [evals/README.md](evals/README.md) for the test set, the regression check an
 2. ✅ AI extraction for plain PDF invoices, review, supplier master data
 3. ✅ Evals: measuring extraction quality with numbers
 4. ✅ Production readiness: background worker, outbox, retries and DLQ, metrics
-5. 🔄 SaaS: login and tenant from the token done; roles and Row-Level Security next
+5. 🔄 SaaS: login, tenant from the token and roles done; Row-Level Security next
 6. Azure deployment with Terraform
 7. UI and showcase
 

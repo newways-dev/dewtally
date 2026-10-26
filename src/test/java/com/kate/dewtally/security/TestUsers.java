@@ -14,7 +14,8 @@ import static org.springframework.security.test.web.servlet.setup.SecurityMockMv
 
 /**
  * Test tokens shaped like Keycloak's, so tests need no running Keycloak.
- * Names and roles match the test users in keycloak/dewtally-realm.json.
+ * Names and roles match the test users in keycloak/dewtally-realm.json; roles become authorities
+ * with the same code as in production (Roles.authorities).
  */
 public final class TestUsers {
 
@@ -29,30 +30,32 @@ public final class TestUsers {
     }
 
     public static RequestPostProcessor user(UUID tenantId, String name, String... roles) {
-        return jwt().jwt(token -> token
-                .claim(CurrentUser.TENANT_CLAIM, tenantId.toString())
-                .claim("preferred_username", name)
-                .claim("realm_access", Map.of("roles", List.of(roles))));
+        return jwt()
+                .jwt(token -> token
+                        .claim(CurrentUser.TENANT_CLAIM, tenantId.toString())
+                        .claim("preferred_username", name)
+                        .claim("realm_access", Map.of("roles", List.of(roles))))
+                .authorities(Roles::authorities);
     }
 
     /**
      * Uploads, checks and corrects invoices.
      */
     public static RequestPostProcessor clerk(UUID tenantId) {
-        return user(tenantId, "anna", "clerk");
+        return user(tenantId, "anna", Roles.CLERK);
     }
 
     /**
      * Accepts and rejects invoices, verifies IBANs.
      */
     public static RequestPostProcessor approver(UUID tenantId) {
-        return user(tenantId, "ben", "approver");
+        return user(tenantId, "ben", Roles.APPROVER);
     }
 
     /**
      * Manages supplier master data.
      */
     public static RequestPostProcessor admin(UUID tenantId) {
-        return user(tenantId, "carla", "admin");
+        return user(tenantId, "carla", Roles.ADMIN);
     }
 }
