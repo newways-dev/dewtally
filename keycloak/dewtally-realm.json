@@ -1,0 +1,149 @@
+{
+  "realm": "dewtally",
+  "enabled": true,
+  "accessTokenLifespan": 1800,
+  "roles": {
+    "realm": [
+      {
+        "name": "clerk",
+        "description": "Uploads, checks and corrects invoices"
+      },
+      {
+        "name": "approver",
+        "description": "Accepts and rejects invoices, verifies IBANs"
+      },
+      {
+        "name": "admin",
+        "description": "Manages supplier master data"
+      }
+    ]
+  },
+  "groups": [
+    {
+      "name": "Demo GmbH",
+      "attributes": {
+        "tenant_id": [
+          "544cc1a9-416b-4715-ac24-cb559d89e262"
+        ]
+      }
+    },
+    {
+      "name": "Other AG",
+      "attributes": {
+        "tenant_id": [
+          "7d3f2c1e-5b4a-4c3d-9e8f-0a1b2c3d4e5f"
+        ]
+      }
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "dewtally-cli",
+      "name": "dewtally local testing (curl, Postman)",
+      "publicClient": true,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": false,
+      "protocolMappers": [
+        {
+          "name": "tenant_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "tenant_id",
+            "claim.name": "tenant_id",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "anna",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "anna@demo.example",
+      "firstName": "Anna",
+      "lastName": "Demo",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "anna",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "clerk"
+      ],
+      "groups": [
+        "/Demo GmbH"
+      ]
+    },
+    {
+      "username": "ben",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "ben@demo.example",
+      "firstName": "Ben",
+      "lastName": "Demo",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ben",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "approver"
+      ],
+      "groups": [
+        "/Demo GmbH"
+      ]
+    },
+    {
+      "username": "carla",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "carla@demo.example",
+      "firstName": "Carla",
+      "lastName": "Demo",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "carla",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "admin"
+      ],
+      "groups": [
+        "/Demo GmbH"
+      ]
+    },
+    {
+      "username": "otto",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "otto@other.example",
+      "firstName": "Otto",
+      "lastName": "Other",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "otto",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "clerk"
+      ],
+      "groups": [
+        "/Other AG"
+      ]
+    }
+  ]
+}

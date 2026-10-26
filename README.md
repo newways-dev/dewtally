@@ -10,10 +10,11 @@ a human look and which are broken — and why.
 
 > Portfolio project, built step by step. Layers 1 (structured e-invoices), 2 (AI extraction and review),
 > 3 (evals: measuring AI quality) and 4 (production readiness) are done; SaaS (login, roles, tenant isolation)
-> is next. See [ROADMAP.md](ROADMAP.md).
+> is in progress. See [ROADMAP.md](ROADMAP.md).
 
 ## What it does today
 
+- **Login**: every API call needs a token from Keycloak (OpenID Connect); the application never handles passwords.
 - **Upload** an invoice file (`POST /api/documents`). Uploads are idempotent: the same file twice is stored once
   (SHA-256 per tenant).
 - **Background processing**: the upload answers `202 Accepted` right away; a separate worker processes the document
@@ -44,7 +45,8 @@ a human look and which are broken — and why.
 
 ```mermaid
 flowchart LR
-    U[Client] -->|upload| API[Upload API]
+    U[Client] -->|login| K[Keycloak]
+    U -->|upload + token| API[Upload API]
     API --> H[SHA-256<br/>deduplication]
     H --> S[(File storage)]
     H --> T[One transaction:<br/>document + outbox message]
@@ -63,8 +65,8 @@ flowchart LR
 ```
 
 The application is a **modular monolith**: one code base, packages by feature (`ingestion`, `document`, `format`,
-`parsing`, `extraction`, `validation`, `invoice`, `review`, `supplier`, `outbox`, `storage`, `tenant`). It runs in two
-roles: the **api** and a **worker** for the untrusted, slow part (PDF parsing and the language model).
+`parsing`, `extraction`, `validation`, `invoice`, `review`, `supplier`, `outbox`, `security`, `storage`, `tenant`).
+It runs in two roles: the **api** and a **worker** for the untrusted, slow part (PDF parsing and the language model).
 
 ## Tech stack
 
@@ -73,6 +75,7 @@ roles: the **api** and a **worker** for the untrusted, slow part (PDF parsing an
 | Language / framework | Java 25, Spring Boot 4                              |
 | Database             | PostgreSQL 17, schema managed by Liquibase          |
 | Persistence          | Spring Data JPA (Hibernate 7)                       |
+| Security             | Spring Security (OAuth2 resource server), Keycloak  |
 | Messaging            | RabbitMQ (Spring AMQP), transactional outbox, DLQ   |
 | e-invoice validation | KoSIT validator + XRechnung configuration           |
 | PDF                  | Apache PDFBox                                       |
@@ -91,21 +94,26 @@ roles: the **api** and a **worker** for the untrusted, slow part (PDF parsing an
 git clone https://github.com/<your-user>/dewtally.git
 cd dewtally
 cp .env.example .env          # then put your OPENAI_API_KEY into .env (never commit it)
+docker compose up -d          # PostgreSQL, RabbitMQ, Keycloak (safe to run again)
 ./mvnw spring-boot:run        # Windows: .\mvnw.cmd spring-boot:run
 ```
 
-This runs api and worker in one process. Docker Compose starts PostgreSQL and RabbitMQ automatically, Liquibase
-creates the schema. Spring Boot only starts the containers when none of them is running yet; after adding a service
-to `compose.yaml`, start it once with `docker compose up -d`. The XRechnung validator configuration is included in
-`kosit/xrechnung/`. Without an API key, structured e-invoices work; plain PDFs go to review.
+This runs api and worker in one process. Liquibase creates the schema. Always start the containers with
+`docker compose up -d` first: Spring Boot only starts them itself when none of them is running yet.
+The XRechnung validator configuration is included in `kosit/xrechnung/`. Without an API key, structured e-invoices
+work; plain PDFs go to review.
 
-RabbitMQ management UI: http://localhost:15672 (user and password `dewtally`).
+- RabbitMQ management UI: http://localhost:15672 (user and password `dewtally`).
+- Keycloak: http://localhost:8180 (admin console user and password `admin`). The realm `dewtally` is imported on
+  start with test users `anna` (clerk), `ben` (approver), `carla` (admin) of Demo GmbH and `otto` (clerk) of
+  Other AG; the password equals the user name. Local test accounts only.
 
-Create a tenant (there is no login yet; it comes in layer 5):
+Create the two test tenants (matching the companies in Keycloak):
 
 ```sql
 INSERT INTO tenant (id, name, created_at)
-VALUES ('544cc1a9-416b-4715-ac24-cb559d89e262', 'Demo GmbH', now());
+VALUES ('544cc1a9-416b-4715-ac24-cb559d89e262', 'Demo GmbH', now()),
+       ('7d3f2c1e-5b4a-4c3d-9e8f-0a1b2c3d4e5f', 'Other AG', now());
 ```
 
 ## API examples
@@ -113,34 +121,41 @@ VALUES ('544cc1a9-416b-4715-ac24-cb559d89e262', 'Demo GmbH', now());
 ```bash
 TENANT=544cc1a9-416b-4715-ac24-cb559d89e262
 
+# Log in as anna and keep the token (valid for 30 minutes)
+TOKEN=$(curl -s -d grant_type=password -d client_id=dewtally-cli -d username=anna -d password=anna \
+     http://localhost:8180/realms/dewtally/protocol/openid-connect/token | jq -r .access_token)
+AUTH="Authorization: Bearer $TOKEN"
+
 # Upload an invoice: 202 Accepted, processed in the background
 curl -F "file=@src/test/resources/invoices/xrechnung-ubl.xml" \
-     -H "X-Tenant-Id: $TENANT" \
+     -H "$AUTH" -H "X-Tenant-Id: $TENANT" \
      http://localhost:8080/api/documents
 
 # Processing status of a document; invoiceId is set once it is processed
-curl -H "X-Tenant-Id: $TENANT" http://localhost:8080/api/documents/$DOCUMENT_ID
+curl -H "$AUTH" -H "X-Tenant-Id: $TENANT" http://localhost:8080/api/documents/$DOCUMENT_ID
 
 # List invoices that need a human look
-curl -H "X-Tenant-Id: $TENANT" "http://localhost:8080/api/invoices?status=NEEDS_REVIEW"
+curl -H "$AUTH" -H "X-Tenant-Id: $TENANT" "http://localhost:8080/api/invoices?status=NEEDS_REVIEW"
 
 # Invoice details with lines and findings
-curl -H "X-Tenant-Id: $TENANT" http://localhost:8080/api/invoices/$INVOICE_ID
+curl -H "$AUTH" -H "X-Tenant-Id: $TENANT" http://localhost:8080/api/invoices/$INVOICE_ID
 
 # Add a supplier; its IBAN starts as PENDING
-curl -X POST -H "X-Tenant-Id: $TENANT" -H "X-User-Name: anna" -H "Content-Type: application/json" \
+curl -X POST -H "$AUTH" -H "X-Tenant-Id: $TENANT" -H "X-User-Name: anna" -H "Content-Type: application/json" \
      -d '{"name":"Muster GmbH","vatId":"DE123456789","iban":"DE89370400440532013000"}' \
      http://localhost:8080/api/suppliers
 
 # A second person verifies the IBAN (the same person gets 409)
-curl -X POST -H "X-Tenant-Id: $TENANT" -H "X-User-Name: ben" \
+curl -X POST -H "$AUTH" -H "X-Tenant-Id: $TENANT" -H "X-User-Name: ben" \
      http://localhost:8080/api/suppliers/$SUPPLIER_ID/ibans/DE89370400440532013000/verify
 
 # Accept an invoice; with a changed IBAN only with confirmation and a comment
-curl -X POST -H "X-Tenant-Id: $TENANT" -H "X-User-Name: anna" -H "Content-Type: application/json" \
+curl -X POST -H "$AUTH" -H "X-Tenant-Id: $TENANT" -H "X-User-Name: anna" -H "Content-Type: application/json" \
      -d '{"ibanConfirmed":true,"comment":"Confirmed by phone with Mr Muster on a known number"}' \
      http://localhost:8080/api/invoices/$INVOICE_ID/accept
 ```
+
+The `X-Tenant-Id` and `X-User-Name` headers are temporary: the next step takes tenant and user from the token.
 
 ## Run as containers (api + worker + monitoring)
 
@@ -158,6 +173,8 @@ docker stats --no-stream        # the worker shows its 1 GiB limit
 - Metrics: Prometheus on http://localhost:9090, Grafana dashboard on http://localhost:3000/d/dewtally.
 - The api exposes metrics on a separate management port (9091) that is not published outside Docker.
 - Uploaded files live in a Docker volume shared by both roles (Azure Blob Storage in production).
+- Tokens always name `http://localhost:8180` as issuer; inside Docker the signing keys are fetched from
+  `keycloak:8080`.
 - If a container cannot reach another one by name (`UnknownHostException: rabbitmq`), recreate them all:
   `docker compose --profile app up -d --force-recreate`.
 
@@ -168,8 +185,9 @@ docker stats --no-stream        # the worker shows its 1 GiB limit
 ```
 
 Integration tests run against a real PostgreSQL and RabbitMQ in Docker (Testcontainers), so Docker must be running.
-Most tests process uploads synchronously; dedicated tests cover background processing, an unreachable RabbitMQ and
-the dead letter queue. Tests that call the real model are skipped unless started with `-Dai=true`.
+Security tests simulate tokens, so no Keycloak is needed. Most tests process uploads synchronously; dedicated tests
+cover background processing, an unreachable RabbitMQ and the dead letter queue. Tests that call the real model are
+skipped unless started with `-Dai=true`.
 
 AI evals call the real model, cost a little money and are not part of the normal build:
 
@@ -207,6 +225,9 @@ See [evals/README.md](evals/README.md) for the test set, the regression check an
   not microservices.
 - **Metrics that answer business questions.** Besides JVM metrics: how many invoices need a person, how sure the
   model is, how long it takes, and whether anything is stuck in the dead letter queue or the outbox.
+- **No home-made login.** Keycloak handles passwords and issues signed tokens (OpenID Connect); the API only checks
+  the signature and issuer. The same code works with Microsoft Entra ID in Azure. The company is a Keycloak group
+  whose `tenant_id` ends up in the token.
 - **Liquibase with XML changelogs; Hibernate only validates the schema.** Database changes are explicit and reviewable.
 - **Idempotent upload.** A unique constraint on `(tenant_id, sha256)` makes double uploads harmless, even when they
   race.
@@ -219,7 +240,7 @@ See [evals/README.md](evals/README.md) for the test set, the regression check an
 2. ✅ AI extraction for plain PDF invoices, review, supplier master data
 3. ✅ Evals: measuring extraction quality with numbers
 4. ✅ Production readiness: background worker, outbox, retries and DLQ, metrics
-5. SaaS: login, roles, tenant isolation
+5. 🔄 SaaS: login done; tenant and user from the token, roles, Row-Level Security next
 6. Azure deployment with Terraform
 7. UI and showcase
 

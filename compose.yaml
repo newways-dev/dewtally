@@ -15,6 +15,8 @@ x-app: &app
     SPRING_DATASOURCE_USERNAME: dewtally
     SPRING_DATASOURCE_PASSWORD: dewtally
     SPRING_RABBITMQ_HOST: rabbitmq
+    # Inside Docker the keys are fetched from keycloak:8080; the token's issuer stays localhost:8180
+    SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/dewtally/protocol/openid-connect/certs
 
 services:
   postgres:
@@ -35,6 +37,21 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+
+  keycloak:
+    # Login server (OpenID Connect). Admin console: http://localhost:8180 (admin / admin, local only)
+    image: quay.io/keycloak/keycloak:26.3
+    command: [ "start-dev", "--import-realm" ]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      # Tokens always name http://localhost:8180 as issuer, whether fetched from the host or from a container
+      KC_HOSTNAME: http://localhost:8180
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+    volumes:
+      - ./keycloak/dewtally-realm.json:/opt/keycloak/data/import/dewtally-realm.json:ro
+    ports:
+      - "8180:8080"
 
   api:
     <<: *app
