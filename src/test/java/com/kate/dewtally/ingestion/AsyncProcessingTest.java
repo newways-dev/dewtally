@@ -14,7 +14,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 import org.testcontainers.rabbitmq.RabbitMQContainer;
 import org.testcontainers.utility.DockerImageName;
@@ -23,6 +22,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.UUID;
 
+import static com.kate.dewtally.security.TestUsers.clerk;
+import static com.kate.dewtally.security.TestUsers.mockMvc;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -39,7 +40,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import({TestcontainersConfiguration.class, AsyncProcessingTest.Rabbit.class})
 class AsyncProcessingTest {
 
-    private static final String TENANT_HEADER = "X-Tenant-Id";
     @Autowired
     private WebApplicationContext context;
     @Autowired
@@ -58,7 +58,7 @@ class AsyncProcessingTest {
 
     @BeforeEach
     void setUp() {
-        mvc = MockMvcBuilders.webAppContextSetup(context).build();
+        mvc = mockMvc(context);
         tenantId = tenants.save(new Tenant("Test GmbH " + UUID.randomUUID())).getId();
     }
 
@@ -67,7 +67,7 @@ class AsyncProcessingTest {
         MockMultipartFile file = new MockMultipartFile(
                 "file", "xrechnung-ubl.xml", "application/xml", resource("xrechnung-ubl.xml"));
 
-        String body = mvc.perform(multipart("/api/documents").file(file).header(TENANT_HEADER, tenantId))
+        String body = mvc.perform(multipart("/api/documents").file(file).with(clerk(tenantId)))
                 .andExpect(status().isAccepted())
                 .andExpect(header().exists("Location"))
                 .andExpect(jsonPath("$.processingStatus").value("RECEIVED"))
@@ -79,7 +79,7 @@ class AsyncProcessingTest {
         String invoiceId = JsonPath.read(processed, "$.invoiceId");
         assertThat(invoiceId).isNotNull();
 
-        mvc.perform(get("/api/invoices/{id}", invoiceId).header(TENANT_HEADER, tenantId))
+        mvc.perform(get("/api/invoices/{id}", invoiceId).with(clerk(tenantId)))
                 .andExpect(status().isOk());
     }
 
@@ -87,7 +87,7 @@ class AsyncProcessingTest {
     void documentOfAnotherTenantIsNotFound() throws Exception {
         UUID otherTenant = tenants.save(new Tenant("Other GmbH " + UUID.randomUUID())).getId();
 
-        mvc.perform(get("/api/documents/{id}", UUID.randomUUID()).header(TENANT_HEADER, otherTenant))
+        mvc.perform(get("/api/documents/{id}", UUID.randomUUID()).with(clerk(otherTenant)))
                 .andExpect(status().isNotFound());
     }
 
@@ -95,7 +95,7 @@ class AsyncProcessingTest {
     private String waitUntilProcessed(String documentId) throws Exception {
         long deadline = System.currentTimeMillis() + 30_000;
         while (System.currentTimeMillis() < deadline) {
-            String body = mvc.perform(get("/api/documents/{id}", documentId).header(TENANT_HEADER, tenantId))
+            String body = mvc.perform(get("/api/documents/{id}", documentId).with(clerk(tenantId)))
                     .andExpect(status().isOk())
                     .andReturn().getResponse().getContentAsString();
             if (!"RECEIVED".equals(JsonPath.read(body, "$.processingStatus"))) {

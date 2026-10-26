@@ -18,7 +18,6 @@ import org.springframework.context.annotation.Import;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 import java.math.BigDecimal;
@@ -26,6 +25,8 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
+import static com.kate.dewtally.security.TestUsers.clerk;
+import static com.kate.dewtally.security.TestUsers.mockMvc;
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
@@ -44,8 +45,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 @Import(TestcontainersConfiguration.class)
 class ReprocessingTest {
-
-    private static final String TENANT_HEADER = "X-Tenant-Id";
 
     @Autowired
     private WebApplicationContext context;
@@ -74,7 +73,7 @@ class ReprocessingTest {
 
     @BeforeEach
     void setUp() {
-        mvc = MockMvcBuilders.webAppContextSetup(context).build();
+        mvc = mockMvc(context);
         tenantId = tenants.save(new Tenant("Test GmbH " + UUID.randomUUID())).getId();
     }
 
@@ -93,17 +92,17 @@ class ReprocessingTest {
         MockMultipartFile file = new MockMultipartFile("file", "rechnung.pdf", "application/pdf", pdf);
 
         // 1st upload: document is kept, but no (half-saved) invoice exists.
-        mvc.perform(multipart("/api/documents").file(file).header(TENANT_HEADER, tenantId))
+        mvc.perform(multipart("/api/documents").file(file).with(clerk(tenantId)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.invoiceId").value(nullValue()));
 
         // 2nd upload of the same file: same document, processed again, now with an invoice.
-        String body = mvc.perform(multipart("/api/documents").file(file).header(TENANT_HEADER, tenantId))
+        String body = mvc.perform(multipart("/api/documents").file(file).with(clerk(tenantId)))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         String invoiceId = JsonPath.read(body, "$.invoiceId");
 
-        mvc.perform(get("/api/invoices/{id}", invoiceId).header(TENANT_HEADER, tenantId))
+        mvc.perform(get("/api/invoices/{id}", invoiceId).with(clerk(tenantId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("VALID"))
                 .andExpect(jsonPath("$.currency").value("EUR"));

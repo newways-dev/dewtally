@@ -1,5 +1,6 @@
 package com.kate.dewtally.supplier;
 
+import com.kate.dewtally.security.CurrentUser;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -10,14 +11,12 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Supplier master data. Tenant and user come from headers until login exists (layer 5).
+ * Supplier master data. Company and user name come from the token: the four-eyes check on IBANs
+ * compares real, logged-in people.
  */
 @RestController
 @RequestMapping("/api/suppliers")
 public class SupplierController {
-
-    private static final String TENANT_HEADER = "X-Tenant-Id";
-    private static final String USER_HEADER = "X-User-Name";
 
     private final SupplierService suppliers;
 
@@ -26,50 +25,43 @@ public class SupplierController {
     }
 
     @PostMapping
-    public ResponseEntity<SupplierResponse> create(@RequestHeader(TENANT_HEADER) UUID tenantId,
-                                                   @RequestHeader(value = USER_HEADER, defaultValue = "unknown") String user,
-                                                   @RequestBody CreateSupplierRequest request) {
-        SupplierResponse created = suppliers.create(tenantId, request.name(), request.vatId(), request.iban(), user);
+    public ResponseEntity<SupplierResponse> create(CurrentUser user, @RequestBody CreateSupplierRequest request) {
+        SupplierResponse created = suppliers.create(
+                user.tenantId(), request.name(), request.vatId(), request.iban(), user.name());
         return ResponseEntity.created(URI.create("/api/suppliers/" + created.id())).body(created);
     }
 
     @GetMapping
-    public List<SupplierResponse> list(@RequestHeader(TENANT_HEADER) UUID tenantId) {
-        return suppliers.list(tenantId);
+    public List<SupplierResponse> list(CurrentUser user) {
+        return suppliers.list(user.tenantId());
     }
 
     @GetMapping("/{id}")
-    public SupplierResponse get(@RequestHeader(TENANT_HEADER) UUID tenantId, @PathVariable UUID id) {
-        return suppliers.get(tenantId, id);
+    public SupplierResponse get(CurrentUser user, @PathVariable UUID id) {
+        return suppliers.get(user.tenantId(), id);
     }
 
     @PostMapping("/{id}/ibans")
-    public SupplierResponse addIban(@RequestHeader(TENANT_HEADER) UUID tenantId,
-                                    @RequestHeader(value = USER_HEADER, defaultValue = "unknown") String user,
-                                    @PathVariable UUID id,
-                                    @RequestBody AddIbanRequest request) {
+    public SupplierResponse addIban(CurrentUser user, @PathVariable UUID id, @RequestBody AddIbanRequest request) {
         if (request == null || request.iban() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "iban is required");
         }
-        return suppliers.addIban(tenantId, id, request.iban(), user);
+        return suppliers.addIban(user.tenantId(), id, request.iban(), user.name());
     }
 
     // The second person confirms the IBAN, e.g. after calling the supplier on a known phone number.
     @PostMapping("/{id}/ibans/{iban}/verify")
-    public SupplierResponse verifyIban(@RequestHeader(TENANT_HEADER) UUID tenantId,
-                                       @RequestHeader(value = USER_HEADER, defaultValue = "unknown") String user,
-                                       @PathVariable UUID id,
-                                       @PathVariable String iban) {
-        return suppliers.verifyIban(tenantId, id, iban, user);
+    public SupplierResponse verifyIban(CurrentUser user, @PathVariable UUID id, @PathVariable String iban) {
+        return suppliers.verifyIban(user.tenantId(), id, iban, user.name());
     }
 
     @PostMapping("/{id}/block")
-    public SupplierResponse block(@RequestHeader(TENANT_HEADER) UUID tenantId, @PathVariable UUID id) {
-        return suppliers.block(tenantId, id);
+    public SupplierResponse block(CurrentUser user, @PathVariable UUID id) {
+        return suppliers.block(user.tenantId(), id);
     }
 
     @PostMapping("/{id}/unblock")
-    public SupplierResponse unblock(@RequestHeader(TENANT_HEADER) UUID tenantId, @PathVariable UUID id) {
-        return suppliers.unblock(tenantId, id);
+    public SupplierResponse unblock(CurrentUser user, @PathVariable UUID id) {
+        return suppliers.unblock(user.tenantId(), id);
     }
 }

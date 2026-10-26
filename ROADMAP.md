@@ -66,8 +66,9 @@ No dates on purpose: the order matters, not the calendar.
 
 ## Layer 5 — SaaS
 
-- [ ] Login and roles (e.g. clerk, approver, admin)
-- [ ] Tenant and user taken from the token instead of the X-Tenant-Id / X-User-Name headers
+- [x] Login with Keycloak (OpenID Connect); the API only accepts valid tokens
+- [x] Tenant and user taken from the token instead of the X-Tenant-Id / X-User-Name headers
+- [ ] Roles: clerk, approver, admin
 - [ ] Tenant isolation with PostgreSQL Row-Level Security
 
 ## Layer 6 — Cloud deployment
