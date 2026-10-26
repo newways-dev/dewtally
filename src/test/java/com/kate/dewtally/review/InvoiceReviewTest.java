@@ -19,7 +19,6 @@ import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 import java.math.BigDecimal;
@@ -27,6 +26,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
+import static com.kate.dewtally.security.TestUsers.*;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -36,7 +36,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Review flow: the model misreads a line (gross instead of net), a person corrects it, accepts or rejects.
+ * Review flow: the model misreads a line (gross instead of net), a clerk corrects it,
+ * an approver accepts or rejects.
  */
 @SpringBootTest(properties = {
         "dewtally.storage.local-root=target/test-documents",
@@ -44,9 +45,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 @Import(TestcontainersConfiguration.class)
 class InvoiceReviewTest {
-
-    private static final String TENANT_HEADER = "X-Tenant-Id";
-    private static final String USER_HEADER = "X-User-Name";
 
     @Autowired
     private WebApplicationContext context;
@@ -103,7 +101,7 @@ class InvoiceReviewTest {
 
     @BeforeEach
     void setUp() {
-        mvc = MockMvcBuilders.webAppContextSetup(context).build();
+        mvc = mockMvc(context);
         tenantId = tenants.save(new Tenant("Test GmbH " + UUID.randomUUID())).getId();
         // The model reads line 1 with VAT included: 1190.00 instead of 1000.00 → line sum mismatch.
         when(llmExtractor.extract(anyString())).thenReturn(extractionWithGrossLine());
@@ -115,7 +113,7 @@ class InvoiceReviewTest {
         assertStatus(invoiceId, "NEEDS_REVIEW");
 
         mvc.perform(put("/api/invoices/{id}/data", invoiceId)
-                        .header(TENANT_HEADER, tenantId).header(USER_HEADER, "anna")
+                        .with(clerk(tenantId))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(correction(version(invoiceId), "1428.00", "1000.00")))
                 .andExpect(status().isOk())
@@ -124,12 +122,13 @@ class InvoiceReviewTest {
                 .andExpect(jsonPath("$.issues", hasSize(0)))
                 .andExpect(jsonPath("$.lines[0].netAmount").value(1000.00));
 
-        mvc.perform(get("/api/invoices/{id}/changes", invoiceId).header(TENANT_HEADER, tenantId))
+        mvc.perform(get("/api/invoices/{id}/changes", invoiceId).with(clerk(tenantId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[*].field", hasItem("lines[1].netAmount")))
                 .andExpect(jsonPath("$[*].oldValue", hasItem("1190.00")))
                 .andExpect(jsonPath("$[*].newValue", hasItem("1000.00")))
                 .andExpect(jsonPath("$[*].field", hasItem("extractionMethod")))
+                // The name comes from the token, not from anything the client sends.
                 .andExpect(jsonPath("$[0].changedBy").value("anna"));
     }
 
@@ -139,7 +138,7 @@ class InvoiceReviewTest {
         long staleVersion = version(invoiceId) - 1;
 
         mvc.perform(put("/api/invoices/{id}/data", invoiceId)
-                        .header(TENANT_HEADER, tenantId)
+                        .with(clerk(tenantId))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(correction(staleVersion, "1428.00", "1000.00")))
                 .andExpect(status().isConflict());
@@ -150,14 +149,15 @@ class InvoiceReviewTest {
         String invoiceId = uploadPdf();
 
         mvc.perform(post("/api/invoices/{id}/accept", invoiceId)
-                        .header(TENANT_HEADER, tenantId).header(USER_HEADER, "anna")
+                        .with(approver(tenantId))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"comment\":\"Checked against the paper invoice\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("ACCEPTED"));
 
-        mvc.perform(get("/api/invoices/{id}/changes", invoiceId).header(TENANT_HEADER, tenantId))
-                .andExpect(jsonPath("$[*].changeType", hasItem("ACCEPTED")));
+        mvc.perform(get("/api/invoices/{id}/changes", invoiceId).with(clerk(tenantId)))
+                .andExpect(jsonPath("$[*].changeType", hasItem("ACCEPTED")))
+                .andExpect(jsonPath("$[*].changedBy", hasItem("ben")));
     }
 
     @Test
@@ -166,14 +166,14 @@ class InvoiceReviewTest {
 
         // Data confirmed by a person: 1200 + 228 != 1500 is now a real error → INVALID.
         mvc.perform(put("/api/invoices/{id}/data", invoiceId)
-                        .header(TENANT_HEADER, tenantId)
+                        .with(clerk(tenantId))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(correction(version(invoiceId), "1500.00", "1000.00")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("INVALID"))
                 .andExpect(jsonPath("$.issues[*].ruleId", hasItem("BR-CO-15")));
 
-        mvc.perform(post("/api/invoices/{id}/accept", invoiceId).header(TENANT_HEADER, tenantId))
+        mvc.perform(post("/api/invoices/{id}/accept", invoiceId).with(approver(tenantId)))
                 .andExpect(status().isConflict());
     }
 
@@ -181,11 +181,11 @@ class InvoiceReviewTest {
     void rejectionNeedsAReasonAndClosesTheInvoice() throws Exception {
         String invoiceId = uploadPdf();
 
-        mvc.perform(post("/api/invoices/{id}/reject", invoiceId).header(TENANT_HEADER, tenantId))
+        mvc.perform(post("/api/invoices/{id}/reject", invoiceId).with(approver(tenantId)))
                 .andExpect(status().isBadRequest());
 
         mvc.perform(post("/api/invoices/{id}/reject", invoiceId)
-                        .header(TENANT_HEADER, tenantId)
+                        .with(approver(tenantId))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"comment\":\"Duplicate of RE-2041\"}"))
                 .andExpect(status().isOk())
@@ -193,7 +193,7 @@ class InvoiceReviewTest {
 
         // A decided invoice cannot be changed any more.
         mvc.perform(put("/api/invoices/{id}/data", invoiceId)
-                        .header(TENANT_HEADER, tenantId)
+                        .with(clerk(tenantId))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(correction(version(invoiceId), "1428.00", "1000.00")))
                 .andExpect(status().isConflict());
@@ -205,20 +205,20 @@ class InvoiceReviewTest {
                 "Rechnung Nr. RE-2041 vom 14.03.2027",
                 "Gesamtbetrag 1.428,00 EUR");
         MockMultipartFile file = new MockMultipartFile("file", "rechnung.pdf", "application/pdf", pdf);
-        String body = mvc.perform(multipart("/api/documents").file(file).header(TENANT_HEADER, tenantId))
+        String body = mvc.perform(multipart("/api/documents").file(file).with(clerk(tenantId)))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
         return JsonPath.read(body, "$.invoiceId");
     }
 
     private long version(String invoiceId) throws Exception {
-        String body = mvc.perform(get("/api/invoices/{id}", invoiceId).header(TENANT_HEADER, tenantId))
+        String body = mvc.perform(get("/api/invoices/{id}", invoiceId).with(clerk(tenantId)))
                 .andReturn().getResponse().getContentAsString();
         return ((Number) JsonPath.read(body, "$.version")).longValue();
     }
 
     private void assertStatus(String invoiceId, String expected) throws Exception {
-        mvc.perform(get("/api/invoices/{id}", invoiceId).header(TENANT_HEADER, tenantId))
+        mvc.perform(get("/api/invoices/{id}", invoiceId).with(clerk(tenantId)))
                 .andExpect(jsonPath("$.status").value(expected));
     }
 }

@@ -15,6 +15,7 @@ a human look and which are broken — and why.
 ## What it does today
 
 - **Login**: every API call needs a token from Keycloak (OpenID Connect); the application never handles passwords.
+  Company and user name come only from the token, so nobody can act for another company or person.
 - **Upload** an invoice file (`POST /api/documents`). Uploads are idempotent: the same file twice is stored once
   (SHA-256 per tenant).
 - **Background processing**: the upload answers `202 Accepted` right away; a separate worker processes the document
@@ -119,43 +120,44 @@ VALUES ('544cc1a9-416b-4715-ac24-cb559d89e262', 'Demo GmbH', now()),
 ## API examples
 
 ```bash
-TENANT=544cc1a9-416b-4715-ac24-cb559d89e262
-
-# Log in as anna and keep the token (valid for 30 minutes)
-TOKEN=$(curl -s -d grant_type=password -d client_id=dewtally-cli -d username=anna -d password=anna \
-     http://localhost:8180/realms/dewtally/protocol/openid-connect/token | jq -r .access_token)
-AUTH="Authorization: Bearer $TOKEN"
+# Log in as a test user and keep the header (tokens are valid for 30 minutes)
+login() {
+  echo "Authorization: Bearer $(curl -s -d grant_type=password -d client_id=dewtally-cli \
+       -d username=$1 -d password=$1 \
+       http://localhost:8180/realms/dewtally/protocol/openid-connect/token | jq -r .access_token)"
+}
+ANNA=$(login anna)     # clerk
+BEN=$(login ben)       # approver
+CARLA=$(login carla)   # admin
 
 # Upload an invoice: 202 Accepted, processed in the background
-curl -F "file=@src/test/resources/invoices/xrechnung-ubl.xml" \
-     -H "$AUTH" -H "X-Tenant-Id: $TENANT" \
-     http://localhost:8080/api/documents
+curl -F "file=@src/test/resources/invoices/xrechnung-ubl.xml" -H "$ANNA" http://localhost:8080/api/documents
 
 # Processing status of a document; invoiceId is set once it is processed
-curl -H "$AUTH" -H "X-Tenant-Id: $TENANT" http://localhost:8080/api/documents/$DOCUMENT_ID
+curl -H "$ANNA" http://localhost:8080/api/documents/$DOCUMENT_ID
 
 # List invoices that need a human look
-curl -H "$AUTH" -H "X-Tenant-Id: $TENANT" "http://localhost:8080/api/invoices?status=NEEDS_REVIEW"
+curl -H "$ANNA" "http://localhost:8080/api/invoices?status=NEEDS_REVIEW"
 
 # Invoice details with lines and findings
-curl -H "$AUTH" -H "X-Tenant-Id: $TENANT" http://localhost:8080/api/invoices/$INVOICE_ID
+curl -H "$ANNA" http://localhost:8080/api/invoices/$INVOICE_ID
 
 # Add a supplier; its IBAN starts as PENDING
-curl -X POST -H "$AUTH" -H "X-Tenant-Id: $TENANT" -H "X-User-Name: anna" -H "Content-Type: application/json" \
+curl -X POST -H "$CARLA" -H "Content-Type: application/json" \
      -d '{"name":"Muster GmbH","vatId":"DE123456789","iban":"DE89370400440532013000"}' \
      http://localhost:8080/api/suppliers
 
-# A second person verifies the IBAN (the same person gets 409)
-curl -X POST -H "$AUTH" -H "X-Tenant-Id: $TENANT" -H "X-User-Name: ben" \
-     http://localhost:8080/api/suppliers/$SUPPLIER_ID/ibans/DE89370400440532013000/verify
+# A second person verifies the IBAN (carla, who added it, gets 409)
+curl -X POST -H "$BEN" http://localhost:8080/api/suppliers/$SUPPLIER_ID/ibans/DE89370400440532013000/verify
 
 # Accept an invoice; with a changed IBAN only with confirmation and a comment
-curl -X POST -H "$AUTH" -H "X-Tenant-Id: $TENANT" -H "X-User-Name: anna" -H "Content-Type: application/json" \
+curl -X POST -H "$BEN" -H "Content-Type: application/json" \
      -d '{"ibanConfirmed":true,"comment":"Confirmed by phone with Mr Muster on a known number"}' \
      http://localhost:8080/api/invoices/$INVOICE_ID/accept
 ```
 
-The `X-Tenant-Id` and `X-User-Name` headers are temporary: the next step takes tenant and user from the token.
+Company and user name come only from the token: there is no header to choose a tenant. A user of another company
+gets `404` for anything that is not theirs; the change history shows the logged-in user's name.
 
 ## Run as containers (api + worker + monitoring)
 
@@ -185,9 +187,10 @@ docker stats --no-stream        # the worker shows its 1 GiB limit
 ```
 
 Integration tests run against a real PostgreSQL and RabbitMQ in Docker (Testcontainers), so Docker must be running.
-Security tests simulate tokens, so no Keycloak is needed. Most tests process uploads synchronously; dedicated tests
-cover background processing, an unreachable RabbitMQ and the dead letter queue. Tests that call the real model are
-skipped unless started with `-Dai=true`.
+Security tests simulate Keycloak-shaped tokens (test users anna, ben, carla), so no Keycloak is needed; a dedicated
+test proves that a user of one company can neither see nor change anything of another. Most tests process uploads
+synchronously; dedicated tests cover background processing, an unreachable RabbitMQ and the dead letter queue.
+Tests that call the real model are skipped unless started with `-Dai=true`.
 
 AI evals call the real model, cost a little money and are not part of the normal build:
 
@@ -228,6 +231,9 @@ See [evals/README.md](evals/README.md) for the test set, the regression check an
 - **No home-made login.** Keycloak handles passwords and issues signed tokens (OpenID Connect); the API only checks
   the signature and issuer. The same code works with Microsoft Entra ID in Azure. The company is a Keycloak group
   whose `tenant_id` ends up in the token.
+- **The token decides, never the request.** Controllers get a `CurrentUser` built from the signed token; there is no
+  header or field to pick a company or a user. The four-eyes check and the change history compare real, logged-in
+  people. Another company's data answers `404`, not `403`, so its existence is not revealed.
 - **Liquibase with XML changelogs; Hibernate only validates the schema.** Database changes are explicit and reviewable.
 - **Idempotent upload.** A unique constraint on `(tenant_id, sha256)` makes double uploads harmless, even when they
   race.
@@ -240,7 +246,7 @@ See [evals/README.md](evals/README.md) for the test set, the regression check an
 2. ✅ AI extraction for plain PDF invoices, review, supplier master data
 3. ✅ Evals: measuring extraction quality with numbers
 4. ✅ Production readiness: background worker, outbox, retries and DLQ, metrics
-5. 🔄 SaaS: login done; tenant and user from the token, roles, Row-Level Security next
+5. 🔄 SaaS: login and tenant from the token done; roles and Row-Level Security next
 6. Azure deployment with Terraform
 7. UI and showcase
 

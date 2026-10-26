@@ -11,12 +11,14 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
+import static com.kate.dewtally.security.TestUsers.clerk;
+import static com.kate.dewtally.security.TestUsers.mockMvc;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -39,7 +41,7 @@ class MetricsTest {
 
     @Test
     void importedInvoiceIsCountedByMethodAndStatus() throws Exception {
-        MockMvc mvc = MockMvcBuilders.webAppContextSetup(context).build();
+        MockMvc mvc = mockMvc(context);
         UUID tenantId = tenants.save(new Tenant("Test GmbH " + UUID.randomUUID())).getId();
         double before = structuredCount();
 
@@ -48,11 +50,11 @@ class MetricsTest {
             xml = in.readAllBytes();
         }
         // A unique comment makes the file new for the hash check, so it is really imported.
-        byte[] content = (new String(xml, java.nio.charset.StandardCharsets.UTF_8)
-                + "<!-- " + UUID.randomUUID() + " -->").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] content = (new String(xml, StandardCharsets.UTF_8) + "<!-- " + UUID.randomUUID() + " -->")
+                .getBytes(StandardCharsets.UTF_8);
         mvc.perform(multipart("/api/documents")
                         .file(new MockMultipartFile("file", "invoice.xml", "application/xml", content))
-                        .header("X-Tenant-Id", tenantId))
+                        .with(clerk(tenantId)))
                 .andExpect(status().isCreated());
 
         assertThat(structuredCount()).isEqualTo(before + 1);

@@ -19,7 +19,6 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 import java.math.BigDecimal;
@@ -27,6 +26,8 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
+import static com.kate.dewtally.security.TestUsers.clerk;
+import static com.kate.dewtally.security.TestUsers.mockMvc;
 import static org.hamcrest.Matchers.hasItem;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
@@ -46,8 +47,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 @Import(TestcontainersConfiguration.class)
 class PdfUploadTest {
-
-    private static final String TENANT_HEADER = "X-Tenant-Id";
 
     private static final byte[] TEXT_PDF = TestPdfs.withText(
             "Muster GmbH, Muehlenweg 1, 20095 Hamburg",
@@ -90,7 +89,7 @@ class PdfUploadTest {
 
     @BeforeEach
     void setUp() {
-        mvc = MockMvcBuilders.webAppContextSetup(context).build();
+        mvc = mockMvc(context);
         tenantId = tenants.save(new Tenant("Test GmbH " + UUID.randomUUID())).getId();
     }
 
@@ -144,14 +143,14 @@ class PdfUploadTest {
 
     private String upload(byte[] pdf) throws Exception {
         MockMultipartFile file = new MockMultipartFile("file", "rechnung.pdf", "application/pdf", pdf);
-        String body = mvc.perform(multipart("/api/documents").file(file).header(TENANT_HEADER, tenantId))
+        String body = mvc.perform(multipart("/api/documents").file(file).with(clerk(tenantId)))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
         return JsonPath.read(body, "$.invoiceId");
     }
 
     private ResultActions getInvoice(String invoiceId) throws Exception {
-        return mvc.perform(get("/api/invoices/{id}", invoiceId).header(TENANT_HEADER, tenantId))
+        return mvc.perform(get("/api/invoices/{id}", invoiceId).with(clerk(tenantId)))
                 .andExpect(status().isOk());
     }
 }

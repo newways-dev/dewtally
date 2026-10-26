@@ -14,7 +14,6 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.RequestBuilder;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.WebApplicationContext;
 
@@ -23,7 +22,10 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
+import static com.kate.dewtally.security.TestUsers.clerk;
+import static com.kate.dewtally.security.TestUsers.mockMvc;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -55,7 +57,7 @@ class DocumentUploadControllerTest {
     private static RequestBuilder upload(UUID tenantId, byte[] content) {
         return multipart("/api/documents")
                 .file(file(content))
-                .header(DocumentUploadController.TENANT_HEADER, tenantId);
+                .with(clerk(tenantId));
     }
 
     private static MockMultipartFile file(byte[] content) {
@@ -73,7 +75,7 @@ class DocumentUploadControllerTest {
 
     @BeforeEach
     void setUp() {
-        mvc = MockMvcBuilders.webAppContextSetup(context).build();
+        mvc = mockMvc(context);
     }
 
     @Test
@@ -154,9 +156,10 @@ class DocumentUploadControllerTest {
     }
 
     @Test
-    void rejectsAnUploadWithoutTenantHeader() throws Exception {
-        mvc.perform(multipart("/api/documents").file(file(XML)))
-                .andExpect(status().isBadRequest());
+    void rejectsATokenWithoutTenant() throws Exception {
+        // A valid login that does not name a company: no data access at all.
+        mvc.perform(multipart("/api/documents").file(file(XML)).with(jwt()))
+                .andExpect(status().isForbidden());
     }
 
     private Invoice uploadInvoice(UUID tenantId, byte[] content) throws Exception {

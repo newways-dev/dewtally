@@ -14,7 +14,6 @@ import org.springframework.context.annotation.Import;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 import java.io.IOException;
@@ -22,6 +21,8 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
+import static com.kate.dewtally.security.TestUsers.clerk;
+import static com.kate.dewtally.security.TestUsers.mockMvc;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -44,8 +45,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 @Import({TestcontainersConfiguration.class, AsyncProcessingTest.Rabbit.class})
 class DeadLetterTest {
-
-    private static final String TENANT_HEADER = "X-Tenant-Id";
 
     @Autowired
     private WebApplicationContext context;
@@ -74,7 +73,7 @@ class DeadLetterTest {
 
     @BeforeEach
     void setUp() {
-        mvc = MockMvcBuilders.webAppContextSetup(context).build();
+        mvc = mockMvc(context);
         tenantId = tenants.save(new Tenant("Test GmbH " + UUID.randomUUID())).getId();
     }
 
@@ -102,7 +101,7 @@ class DeadLetterTest {
     private String upload() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
                 "file", "xrechnung-ubl.xml", "application/xml", resource("xrechnung-ubl.xml"));
-        String body = mvc.perform(multipart("/api/documents").file(file).header(TENANT_HEADER, tenantId))
+        String body = mvc.perform(multipart("/api/documents").file(file).with(clerk(tenantId)))
                 .andExpect(status().isAccepted())
                 .andReturn().getResponse().getContentAsString();
         return JsonPath.read(body, "$.id");
@@ -123,7 +122,7 @@ class DeadLetterTest {
     private boolean waitForStatus(String documentId, String expected) throws Exception {
         long deadline = System.currentTimeMillis() + 10_000;
         while (System.currentTimeMillis() < deadline) {
-            String body = mvc.perform(get("/api/documents/{id}", documentId).header(TENANT_HEADER, tenantId))
+            String body = mvc.perform(get("/api/documents/{id}", documentId).with(clerk(tenantId)))
                     .andReturn().getResponse().getContentAsString();
             if (expected.equals(JsonPath.read(body, "$.processingStatus"))) {
                 return true;

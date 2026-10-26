@@ -11,13 +11,14 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.UUID;
 
+import static com.kate.dewtally.security.TestUsers.clerk;
+import static com.kate.dewtally.security.TestUsers.mockMvc;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -31,8 +32,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 @Import(TestcontainersConfiguration.class)
 class InvoiceControllerTest {
-
-    private static final String TENANT_HEADER = "X-Tenant-Id";
 
     @Autowired
     private WebApplicationContext context;
@@ -54,7 +53,7 @@ class InvoiceControllerTest {
 
     @BeforeEach
     void setUp() {
-        mvc = MockMvcBuilders.webAppContextSetup(context).build();
+        mvc = mockMvc(context);
         tenantId = tenants.save(new Tenant("Test GmbH " + UUID.randomUUID())).getId();
     }
 
@@ -62,7 +61,7 @@ class InvoiceControllerTest {
     void returnsInvoiceWithLinesAndIssues() throws Exception {
         String invoiceId = uploadInvoice("xrechnung-ubl.xml");
 
-        mvc.perform(get("/api/invoices/{id}", invoiceId).header(TENANT_HEADER, tenantId))
+        mvc.perform(get("/api/invoices/{id}", invoiceId).with(clerk(tenantId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(invoiceId))
                 .andExpect(jsonPath("$.status").value("VALID"))
@@ -78,13 +77,13 @@ class InvoiceControllerTest {
         String invoiceId = uploadInvoice("xrechnung-ubl.xml");
         UUID otherTenant = tenants.save(new Tenant("Other GmbH " + UUID.randomUUID())).getId();
 
-        mvc.perform(get("/api/invoices/{id}", invoiceId).header(TENANT_HEADER, otherTenant))
+        mvc.perform(get("/api/invoices/{id}", invoiceId).with(clerk(otherTenant)))
                 .andExpect(status().isNotFound());
     }
 
     @Test
     void returnsNotFoundForUnknownInvoice() throws Exception {
-        mvc.perform(get("/api/invoices/{id}", UUID.randomUUID()).header(TENANT_HEADER, tenantId))
+        mvc.perform(get("/api/invoices/{id}", UUID.randomUUID()).with(clerk(tenantId)))
                 .andExpect(status().isNotFound());
     }
 
@@ -92,13 +91,13 @@ class InvoiceControllerTest {
     void listsInvoicesFilteredByStatus() throws Exception {
         uploadInvoice("xrechnung-ubl.xml");
 
-        mvc.perform(get("/api/invoices").param("status", "VALID").header(TENANT_HEADER, tenantId))
+        mvc.perform(get("/api/invoices").param("status", "VALID").with(clerk(tenantId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(1)))
                 .andExpect(jsonPath("$.items[0].invoiceNumber").value("RE-2041"))
                 .andExpect(jsonPath("$.totalItems").value(1));
 
-        mvc.perform(get("/api/invoices").param("status", "INVALID").header(TENANT_HEADER, tenantId))
+        mvc.perform(get("/api/invoices").param("status", "INVALID").with(clerk(tenantId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(0)));
     }
@@ -108,7 +107,7 @@ class InvoiceControllerTest {
         uploadInvoice("xrechnung-ubl.xml");
         uploadInvoice("xrechnung-cii.xml");
 
-        mvc.perform(get("/api/invoices").header(TENANT_HEADER, tenantId))
+        mvc.perform(get("/api/invoices").with(clerk(tenantId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(2)))
                 .andExpect(jsonPath("$.totalItems").value(2));
@@ -116,13 +115,13 @@ class InvoiceControllerTest {
 
     @Test
     void rejectsUnknownStatus() throws Exception {
-        mvc.perform(get("/api/invoices").param("status", "FOO").header(TENANT_HEADER, tenantId))
+        mvc.perform(get("/api/invoices").param("status", "FOO").with(clerk(tenantId)))
                 .andExpect(status().isBadRequest());
     }
 
     private String uploadInvoice(String name) throws Exception {
         MockMultipartFile file = new MockMultipartFile("file", name, "application/xml", resource(name));
-        String body = mvc.perform(multipart("/api/documents").file(file).header(TENANT_HEADER, tenantId))
+        String body = mvc.perform(multipart("/api/documents").file(file).with(clerk(tenantId)))
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
         return JsonPath.read(body, "$.invoiceId");

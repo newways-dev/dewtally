@@ -1,6 +1,7 @@
 package com.kate.dewtally.ingestion;
 
 import com.kate.dewtally.document.ProcessingStatus;
+import com.kate.dewtally.security.CurrentUser;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -12,14 +13,11 @@ import java.util.UUID;
 /**
  * HTTP entry point for uploading invoice files and checking their processing.
  * The controller only translates HTTP to a service call and back; the logic lives in the service.
+ * The company always comes from the user's token.
  */
 @RestController
 @RequestMapping("/api/documents")
 public class DocumentUploadController {
-
-    // Temporary until authentication (layer 5): the tenant is passed as a header.
-    // Later it will come from the logged-in user's token, and this header will be removed.
-    static final String TENANT_HEADER = "X-Tenant-Id";
 
     private final DocumentUploadService uploadService;
 
@@ -28,9 +26,8 @@ public class DocumentUploadController {
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<DocumentResponse> upload(@RequestHeader(TENANT_HEADER) UUID tenantId,
-                                                   @RequestParam("file") MultipartFile file) {
-        UploadResult result = uploadService.upload(tenantId, file);
+    public ResponseEntity<DocumentResponse> upload(CurrentUser user, @RequestParam("file") MultipartFile file) {
+        UploadResult result = uploadService.upload(user.tenantId(), file);
         DocumentResponse body = DocumentResponse.from(result.document(), result.invoiceId());
 
         if (!result.created()) {
@@ -46,7 +43,7 @@ public class DocumentUploadController {
     }
 
     @GetMapping("/{id}")
-    public DocumentResponse get(@RequestHeader(TENANT_HEADER) UUID tenantId, @PathVariable UUID id) {
-        return uploadService.get(tenantId, id);
+    public DocumentResponse get(CurrentUser user, @PathVariable UUID id) {
+        return uploadService.get(user.tenantId(), id);
     }
 }

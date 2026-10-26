@@ -11,11 +11,13 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 import java.util.UUID;
 
+import static com.kate.dewtally.security.TestUsers.clerk;
+import static com.kate.dewtally.security.TestUsers.mockMvc;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -30,8 +32,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(TestcontainersConfiguration.class)
 class ApiExceptionHandlerTest {
 
-    private static final String TENANT_HEADER = "X-Tenant-Id";
-
     @Autowired
     private WebApplicationContext context;
 
@@ -43,13 +43,13 @@ class ApiExceptionHandlerTest {
 
     @BeforeEach
     void setUp() {
-        mvc = MockMvcBuilders.webAppContextSetup(context).build();
+        mvc = mockMvc(context);
         tenantId = tenants.save(new Tenant("Test GmbH " + UUID.randomUUID())).getId();
     }
 
     @Test
     void unknownInvoiceIsNotFoundProblem() throws Exception {
-        mvc.perform(get("/api/invoices/{id}", UUID.randomUUID()).header(TENANT_HEADER, tenantId))
+        mvc.perform(get("/api/invoices/{id}", UUID.randomUUID()).with(clerk(tenantId)))
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.status").value(404))
@@ -57,23 +57,23 @@ class ApiExceptionHandlerTest {
     }
 
     @Test
-    void missingTenantHeaderIsBadRequestProblem() throws Exception {
-        mvc.perform(get("/api/invoices"))
-                .andExpect(status().isBadRequest())
+    void tokenWithoutCompanyIsForbiddenProblem() throws Exception {
+        mvc.perform(get("/api/invoices").with(jwt()))
+                .andExpect(status().isForbidden())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(jsonPath("$.status").value(400));
+                .andExpect(jsonPath("$.status").value(403));
     }
 
     @Test
-    void malformedTenantIdIsBadRequestProblem() throws Exception {
-        mvc.perform(get("/api/invoices").header(TENANT_HEADER, "not-a-uuid"))
-                .andExpect(status().isBadRequest())
+    void malformedCompanyInTokenIsForbiddenProblem() throws Exception {
+        mvc.perform(get("/api/invoices").with(jwt().jwt(token -> token.claim("tenant_id", "not-a-uuid"))))
+                .andExpect(status().isForbidden())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
     }
 
     @Test
     void unknownStatusIsBadRequestProblem() throws Exception {
-        mvc.perform(get("/api/invoices").param("status", "FOO").header(TENANT_HEADER, tenantId))
+        mvc.perform(get("/api/invoices").param("status", "FOO").with(clerk(tenantId)))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
     }
@@ -82,7 +82,7 @@ class ApiExceptionHandlerTest {
     void uploadForUnknownTenantIsNotFoundProblem() throws Exception {
         MockMultipartFile file = new MockMultipartFile("file", "a.xml", "application/xml", "<a/>".getBytes());
 
-        mvc.perform(multipart("/api/documents").file(file).header(TENANT_HEADER, UUID.randomUUID()))
+        mvc.perform(multipart("/api/documents").file(file).with(clerk(UUID.randomUUID())))
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
     }
@@ -91,7 +91,7 @@ class ApiExceptionHandlerTest {
     void emptyUploadIsBadRequestProblem() throws Exception {
         MockMultipartFile empty = new MockMultipartFile("file", "empty.xml", "application/xml", new byte[0]);
 
-        mvc.perform(multipart("/api/documents").file(empty).header(TENANT_HEADER, tenantId))
+        mvc.perform(multipart("/api/documents").file(empty).with(clerk(tenantId)))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
     }
