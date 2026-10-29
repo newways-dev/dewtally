@@ -26,11 +26,22 @@ public class InvoiceController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Invoice not found"));
     }
 
+    /**
+     * @param status optional filter
+     * @param q      optional search in supplier name and invoice number
+     */
     @GetMapping
     public PageResponse<InvoiceSummaryResponse> list(CurrentUser user,
                                                      @RequestParam(required = false) InvoiceStatus status,
+                                                     @RequestParam(required = false) String q,
                                                      @RequestParam(defaultValue = "0") int page,
                                                      @RequestParam(defaultValue = "20") int size) {
-        return queries.list(user.tenantId(), status, page, size);
+        return queries.list(user.tenantId(), status, q, page, size);
+    }
+
+    // Numbers for the summary cards above the list
+    @GetMapping("/counts")
+    public InvoiceCountsResponse counts(CurrentUser user) {
+        return queries.counts(user.tenantId());
     }
 }

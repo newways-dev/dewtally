@@ -26,6 +26,32 @@ public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
 
     boolean existsByIdAndTenantId(UUID id, UUID tenantId);
 
+    /**
+     * Invoice list with optional filters: status, and a search pattern on supplier name and invoice number.
+     * The pattern is lower case, already wrapped in % and with % and _ escaped by the caller.
+     */
+    @Query("""
+            SELECT i FROM Invoice i
+            WHERE i.tenantId = :tenantId
+              AND (:status IS NULL OR i.status = :status)
+              AND (:pattern IS NULL
+                   OR LOWER(i.supplierName) LIKE :pattern ESCAPE '\\'
+                   OR LOWER(i.invoiceNumber) LIKE :pattern ESCAPE '\\')
+            """)
+    Page<Invoice> search(@Param("tenantId") UUID tenantId,
+                         @Param("status") InvoiceStatus status,
+                         @Param("pattern") String pattern,
+                         Pageable pageable);
+
+    // One query for all counts instead of one per status
+    @Query("""
+            SELECT new com.kate.dewtally.invoice.StatusCount(i.status, COUNT(i))
+            FROM Invoice i
+            WHERE i.tenantId = :tenantId
+            GROUP BY i.status
+            """)
+    List<StatusCount> countByStatus(@Param("tenantId") UUID tenantId);
+
     // Loads an invoice that is about to be changed by a person. The version is always increased,
     // even if only lines change, so a parallel change of the same invoice is always detected.
     @Lock(LockModeType.OPTIMISTIC_FORCE_INCREMENT)
