@@ -48,6 +48,9 @@ services:
       # Tokens always name http://localhost:8180 as issuer, whether fetched from the host or from a container
       KC_HOSTNAME: http://localhost:8180
       KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      # Filled into the realm file on import: the web UI and its client secret (local values only)
+      DEWTALLY_WEB_URL: http://localhost:3000
+      DEWTALLY_WEB_CLIENT_SECRET: local-dev-only-web-secret
     volumes:
       - ./keycloak/dewtally-realm.json:/opt/keycloak/data/import/dewtally-realm.json:ro
     ports:
