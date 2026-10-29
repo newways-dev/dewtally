@@ -4,6 +4,7 @@ import com.jayway.jsonpath.JsonPath;
 import com.kate.dewtally.TestcontainersConfiguration;
 import com.kate.dewtally.invoice.*;
 import com.kate.dewtally.tenant.Tenant;
+import com.kate.dewtally.tenant.TenantContext;
 import com.kate.dewtally.tenant.TenantRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,7 +15,8 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.RequestBuilder;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.context.WebApplicationContext;
 
 import java.io.IOException;
@@ -32,13 +34,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * Calls the real HTTP endpoint (without a network) against a real PostgreSQL.
  * Uploaded files go to target/, which "mvn clean" removes.
+ * Not @Transactional on purpose: each request opens its own transaction as the token's tenant,
+ * exactly like in production. Each test uses a new tenant, so tests never see each other's data.
  */
 @SpringBootTest(properties = {
         "dewtally.storage.local-root=target/test-documents",
         "dewtally.validation.kosit.enabled=false"
 })
 @Import(TestcontainersConfiguration.class)
-@Transactional
 class DocumentUploadControllerTest {
 
     private static final byte[] XML = "<Invoice>RE-2041</Invoice>".getBytes(StandardCharsets.UTF_8);
@@ -52,7 +55,11 @@ class DocumentUploadControllerTest {
     @Autowired
     private InvoiceRepository invoices;
 
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
     private MockMvc mvc;
+    private TransactionTemplate transactions;
 
     private static RequestBuilder upload(UUID tenantId, byte[] content) {
         return multipart("/api/documents")
@@ -76,6 +83,7 @@ class DocumentUploadControllerTest {
     @BeforeEach
     void setUp() {
         mvc = mockMvc(context);
+        transactions = new TransactionTemplate(transactionManager);
     }
 
     @Test
@@ -168,7 +176,18 @@ class DocumentUploadControllerTest {
                 .andExpect(jsonPath("$.invoiceId").isNotEmpty())
                 .andReturn();
         String invoiceId = JsonPath.read(result.getResponse().getContentAsString(), "$.invoiceId");
-        return invoices.findByIdAndTenantId(UUID.fromString(invoiceId), tenantId).orElseThrow();
+        return loadInvoice(tenantId, UUID.fromString(invoiceId));
+    }
+
+    // Reads the invoice as its tenant. size() loads lines and findings while the transaction is open,
+    // so the test can check them afterwards.
+    private Invoice loadInvoice(UUID tenantId, UUID invoiceId) {
+        return TenantContext.callAs(tenantId, () -> transactions.execute(status -> {
+            Invoice invoice = invoices.findByIdAndTenantId(invoiceId, tenantId).orElseThrow();
+            invoice.getLines().size();
+            invoice.getIssues().size();
+            return invoice;
+        }));
     }
 
     private UUID newTenant() {

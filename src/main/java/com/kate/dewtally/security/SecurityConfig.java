@@ -10,6 +10,7 @@ import org.springframework.security.oauth2.server.resource.web.BearerTokenAuthen
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
 
 import static com.kate.dewtally.security.Roles.*;
 
@@ -65,6 +66,8 @@ class SecurityConfig {
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(notLoggedIn)
                         .accessDeniedHandler(notAllowed))
+                // After the token and the role are checked: the rest of the request runs as the token's tenant
+                .addFilterAfter(new TenantFilter(), AuthorizationFilter.class)
                 // A token comes with every request: no server-side session, no login cookie
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 // CSRF attacks abuse cookies the browser sends by itself; a bearer token is never sent automatically

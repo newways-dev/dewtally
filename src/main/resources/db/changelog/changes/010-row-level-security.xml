@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- Row-Level Security: PostgreSQL itself only shows rows of the current tenant.
+         The application switches to this role for its work; the role cannot bypass RLS.
+         Liquibase keeps running as the table owner. -->
+    <changeSet id="016-create-app-role" author="kate">
+        <!-- Roles exist once per database server: create it only if it is not there yet. -->
+        <sql splitStatements="false">
+            DO
+            $$
+            BEGIN
+                IF
+            NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'dewtally_app') THEN
+            CREATE ROLE dewtally_app NOLOGIN;
+            END IF;
+            END
+            $$;
+        </sql>
+        <sql>
+            -- The connecting user may switch to the app role
+            GRANT dewtally_app TO CURRENT_USER;
+            GRANT
+            USAGE
+            ON
+            SCHEMA
+            public TO dewtally_app;
+            GRANT
+            SELECT,
+            INSERT
+            ,
+            UPDATE,
+            DELETE
+            ON ALL TABLES IN SCHEMA public TO dewtally_app;
+            -- Liquibase bookkeeping is none of the application's business
+            REVOKE ALL ON databasechangelog, databasechangeloglock FROM dewtally_app;
+            -- Tables created by later migrations get the same rights automatically
+            ALTER
+            DEFAULT PRIVILEGES IN SCHEMA public GRANT
+            SELECT,
+            INSERT
+            ,
+            UPDATE,
+            DELETE
+            ON TABLES TO dewtally_app;
+        </sql>
+        <rollback>
+            <sql>
+                ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLES FROM
+                dewtally_app;
+                REVOKE ALL ON ALL TABLES IN SCHEMA public FROM dewtally_app;
+                REVOKE USAGE ON SCHEMA public FROM dewtally_app;
+                DROP ROLE dewtally_app;
+            </sql>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="017-enable-row-level-security" author="kate">
+        <!-- The tenant of the current connection, set by the application. Not set or empty: NULL, so no row matches. -->
+        <sql splitStatements="false">
+            CREATE FUNCTION current_tenant_id() RETURNS uuid
+                LANGUAGE sql STABLE
+            AS $$
+            SELECT NULLIF(current_setting('app.tenant_id', true), '') ::uuid $$;
+        </sql>
+        <!-- A policy with only USING applies to reading AND writing: a row of another tenant
+             can neither be seen, nor inserted, nor changed into one. -->
+        <sql>
+            ALTER TABLE invoice_document ENABLE ROW LEVEL SECURITY;
+            CREATE
+            POLICY tenant_isolation ON invoice_document
+                USING (tenant_id = current_tenant_id());
+
+            ALTER TABLE invoice ENABLE ROW LEVEL SECURITY;
+            CREATE
+            POLICY tenant_isolation ON invoice
+                USING (tenant_id = current_tenant_id());
+
+            ALTER TABLE invoice_change ENABLE ROW LEVEL SECURITY;
+            CREATE
+            POLICY tenant_isolation ON invoice_change
+                USING (tenant_id = current_tenant_id());
+
+            ALTER TABLE supplier ENABLE ROW LEVEL SECURITY;
+            CREATE
+            POLICY tenant_isolation ON supplier
+                USING (tenant_id = current_tenant_id());
+
+            -- Child tables without tenant_id: visible only if the parent row is visible
+            -- (the subquery itself is filtered by the parent's policy).
+            ALTER TABLE invoice_line ENABLE ROW LEVEL SECURITY;
+            CREATE
+            POLICY tenant_isolation ON invoice_line
+                USING (EXISTS (SELECT 1 FROM invoice i WHERE i.id = invoice_line.invoice_id));
+
+            ALTER TABLE validation_issue ENABLE ROW LEVEL SECURITY;
+            CREATE
+            POLICY tenant_isolation ON validation_issue
+                USING (EXISTS (SELECT 1 FROM invoice i WHERE i.id = validation_issue.invoice_id));
+
+            ALTER TABLE supplier_iban ENABLE ROW LEVEL SECURITY;
+            CREATE
+            POLICY tenant_isolation ON supplier_iban
+                USING (EXISTS (SELECT 1 FROM supplier s WHERE s.id = supplier_iban.supplier_id));
+        </sql>
+        <rollback>
+            <sql>
+                DROP POLICY tenant_isolation ON supplier_iban;
+                ALTER TABLE supplier_iban DISABLE ROW LEVEL SECURITY;
+                DROP POLICY tenant_isolation ON validation_issue;
+                ALTER TABLE validation_issue DISABLE ROW LEVEL SECURITY;
+                DROP POLICY tenant_isolation ON invoice_line;
+                ALTER TABLE invoice_line DISABLE ROW LEVEL SECURITY;
+                DROP POLICY tenant_isolation ON supplier;
+                ALTER TABLE supplier DISABLE ROW LEVEL SECURITY;
+                DROP POLICY tenant_isolation ON invoice_change;
+                ALTER TABLE invoice_change DISABLE ROW LEVEL SECURITY;
+                DROP POLICY tenant_isolation ON invoice;
+                ALTER TABLE invoice DISABLE ROW LEVEL SECURITY;
+                DROP POLICY tenant_isolation ON invoice_document;
+                ALTER TABLE invoice_document DISABLE ROW LEVEL SECURITY;
+                DROP FUNCTION current_tenant_id();
+            </sql>
+        </rollback>
+    </changeSet>
+
+    <!-- The worker only gets a document id from the queue. This function tells it the document's tenant
+         and nothing else. It runs with the owner's rights (SECURITY DEFINER), so it sees past RLS.
+         The tenant comes from the database, never from the message, so a forged message cannot pick one. -->
+    <changeSet id="018-create-document-tenant-function" author="kate">
+        <sql splitStatements="false">
+            CREATE FUNCTION document_tenant(uuid) RETURNS uuid
+                LANGUAGE sql STABLE SECURITY DEFINER
+                SET search_path = public
+            AS $$
+            SELECT tenant_id
+            FROM invoice_document
+            WHERE id = $1 $$;
+        </sql>
+        <sql>
+            REVOKE EXECUTE ON FUNCTION document_tenant(uuid) FROM PUBLIC;
+            GRANT
+            EXECUTE
+            ON
+            FUNCTION
+            document_tenant
+            (uuid) TO dewtally_app;
+        </sql>
+        <rollback>
+            <sql>
+                DROP FUNCTION document_tenant(uuid);
+            </sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -10,6 +10,7 @@ import com.kate.dewtally.parsing.InvoiceParser;
 import com.kate.dewtally.parsing.ParsedInvoice;
 import com.kate.dewtally.storage.DocumentStorage;
 import com.kate.dewtally.storage.StorageException;
+import com.kate.dewtally.tenant.TenantContext;
 import com.kate.dewtally.xml.InvalidXmlException;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -28,7 +29,6 @@ import java.util.UUID;
 /**
  * Turns a stored document into an invoice: from the XML for structured e-invoices, with a language model
  * for plain PDFs. Called during the upload (synchronous mode) or by the queue listener (asynchronous mode).
- * <p>
  * Permanent problems (broken file, unreadable PDF, model failure) are handled here: the document ends up
  * PROCESSED (possibly with an invoice for manual review) or FAILED. Temporary problems in the queue path
  * are thrown as {@link TransientProcessingException}, so the message is retried.
@@ -41,6 +41,7 @@ public class DocumentProcessor {
     private static final Logger log = LoggerFactory.getLogger(DocumentProcessor.class);
 
     private final InvoiceDocumentRepository documents;
+    private final DocumentTenants tenants;
     private final DocumentStorage storage;
     private final InvoiceParser invoiceParser;
     private final PdfTextExtractor pdfTextExtractor;
@@ -52,6 +53,7 @@ public class DocumentProcessor {
     private final Bulkhead pdfBulkhead;
 
     public DocumentProcessor(InvoiceDocumentRepository documents,
+                             DocumentTenants tenants,
                              DocumentStorage storage,
                              InvoiceParser invoiceParser,
                              PdfTextExtractor pdfTextExtractor,
@@ -62,6 +64,7 @@ public class DocumentProcessor {
                              @Value("${dewtally.extraction.pdf-max-concurrent:2}") int pdfMaxConcurrent,
                              @Value("${dewtally.extraction.pdf-max-queued:10}") int pdfMaxQueued) {
         this.documents = documents;
+        this.tenants = tenants;
         this.storage = storage;
         this.invoiceParser = invoiceParser;
         this.pdfTextExtractor = pdfTextExtractor;
@@ -91,12 +94,21 @@ public class DocumentProcessor {
     }
 
     /**
-     * Entry point for the queue: loads the document and its file.
-     * Safe to call twice for the same document: a message can be delivered more than once.
+     * Entry point for the queue: finds the document's tenant, then loads the document and its file
+     * as that tenant. Safe to call twice for the same document: a message can be delivered more than once.
      *
      * @throws TransientProcessingException for temporary problems; the message is then retried
      */
     public UUID process(UUID documentId) {
+        Optional<UUID> tenantId = tenants.find(documentId);
+        if (tenantId.isEmpty()) {
+            log.warn("Document {} not found, nothing to process", documentId);
+            return null;
+        }
+        return TenantContext.callAs(tenantId.get(), () -> processAsTenant(documentId));
+    }
+
+    private UUID processAsTenant(UUID documentId) {
         Optional<InvoiceDocument> found = documents.findById(documentId);
         if (found.isEmpty()) {
             log.warn("Document {} not found, nothing to process", documentId);
@@ -123,7 +135,8 @@ public class DocumentProcessor {
     }
 
     /**
-     * Processes a document whose content is already in memory (the upload request). Never throws.
+     * Processes a document whose content is already in memory (the upload request, which already
+     * runs as the user's tenant). Never throws.
      */
     UUID process(InvoiceDocument document, byte[] content) {
         return run(document, content, false);
@@ -134,10 +147,15 @@ public class DocumentProcessor {
      * was created in the meantime. Uploading the same file again starts over.
      */
     public void giveUp(UUID documentId) {
-        documents.findById(documentId).ifPresent(document -> {
+        Optional<UUID> tenantId = tenants.find(documentId);
+        if (tenantId.isEmpty()) {
+            log.warn("Document {} not found, nothing to mark as failed", documentId);
+            return;
+        }
+        TenantContext.runAs(tenantId.get(), () -> documents.findById(documentId).ifPresent(document -> {
             boolean hasInvoice = invoiceService.findIdByDocument(document.getTenantId(), documentId).isPresent();
             finish(document, hasInvoice);
-        });
+        }));
     }
 
     /**
