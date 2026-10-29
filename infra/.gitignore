@@ -1,0 +1,14 @@
+# Downloaded providers (recreated by "terraform init")
+.terraform/
+
+# State: what Terraform created, may contain passwords. Never commit.
+*.tfstate
+*.tfstate.*
+
+# Local variable values (may contain secrets); an example file without secrets is fine
+*.tfvars
+!example.tfvars
+
+# Plans saved to a file
+*.tfplan
+crash.log
