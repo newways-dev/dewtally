@@ -74,21 +74,21 @@ It runs in two roles: the **api** and a **worker** for the untrusted, slow part 
 
 ## Tech stack
 
-| Area                 | Choice                                              |
-|----------------------|-----------------------------------------------------|
-| Language / framework | Java 25, Spring Boot 4                              |
-| Database             | PostgreSQL 17, schema managed by Liquibase          |
-| Persistence          | Spring Data JPA (Hibernate 7)                       |
-| Security             | Spring Security (OAuth2 resource server), Keycloak  |
-| Messaging            | RabbitMQ (Spring AMQP), transactional outbox, DLQ   |
-| e-invoice validation | KoSIT validator + XRechnung configuration           |
-| PDF                  | Apache PDFBox                                       |
-| AI                   | Spring AI with OpenAI (structured output)           |
-| Observability        | Micrometer, Prometheus, Grafana                     |
-| Containers           | Docker, Docker Compose (api + worker with limits)   |
-| Tests                | JUnit 5, AssertJ, Mockito, MockMvc, Testcontainers  |
-| AI evals             | Own eval suite on ZUGFeRD samples and hard cases    |
-| CI                   | GitHub Actions (`mvn verify` on every pull request) |
+| Area                 | Choice                                                                                   |
+|----------------------|------------------------------------------------------------------------------------------|
+| Language / framework | Java 25, Spring Boot 4                                                                   |
+| Database             | PostgreSQL 17, schema managed by Liquibase                                               |
+| Persistence          | Spring Data JPA (Hibernate 7)                                                            |
+| Security             | Spring Security (OAuth2 resource server), Keycloak                                       |
+| Messaging            | RabbitMQ (Spring AMQP), transactional outbox, DLQ                                        |
+| e-invoice validation | KoSIT validator + XRechnung configuration                                                |
+| PDF                  | Apache PDFBox                                                                            |
+| AI                   | Spring AI with OpenAI (structured output)                                                |
+| Observability        | Micrometer, Prometheus, Grafana                                                          |
+| Containers           | Docker, Docker Compose (api + worker with limits)                                        |
+| Tests                | JUnit 5, AssertJ, Mockito, MockMvc, Testcontainers                                       |
+| AI evals             | Own eval suite on ZUGFeRD samples and hard cases                                         |
+| CI                   | GitHub Actions: tests on every pull request, image to GitHub Container Registry on merge |
 
 ## Run locally
 
@@ -200,6 +200,13 @@ docker compose --profile app up -d --build
 docker stats --no-stream        # the worker shows its 1 GiB limit
 ```
 
+The image is also published by CI on every merge to `main`, with the tags `latest`, `sha-<commit>` and the version
+of each release tag:
+
+```bash
+docker pull ghcr.io/newways-dev/dewtally:latest
+```
+
 - Metrics: Prometheus on http://localhost:9090, Grafana dashboard on http://localhost:3000/d/dewtally.
 - The api exposes metrics on a separate management port (9091) that is not published outside Docker.
 - Uploaded files live in a Docker volume shared by both roles (Azure Blob Storage in production).
@@ -288,7 +295,7 @@ See [evals/README.md](evals/README.md) for the test set, the regression check an
 3. ✅ Evals: measuring extraction quality with numbers
 4. ✅ Production readiness: background worker, outbox, retries and DLQ, metrics
 5. ✅ SaaS: login with Keycloak, roles, tenant isolation with Row-Level Security
-6. 🔜 Azure deployment with Terraform
+6. 🔄 Azure deployment with Terraform: the Docker image is published by CI; infrastructure is next
 7. UI and showcase
 
 Details: [ROADMAP.md](ROADMAP.md)
