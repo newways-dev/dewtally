@@ -26,3 +26,15 @@ variable "openai_api_key" {
   type        = string
   sensitive   = true
 }
+
+variable "image_registry" {
+  description = "Where CI publishes the images (public packages, no login needed)"
+  type        = string
+  default     = "ghcr.io/newways-dev"
+}
+
+variable "image_tag" {
+  description = "Image version to run: latest, or an exact commit like sha-1a2b3c4"
+  type        = string
+  default     = "latest"
+}

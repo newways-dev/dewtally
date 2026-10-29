@@ -7,3 +7,8 @@ output "postgres_host" {
   description = "Host name of the PostgreSQL server"
   value       = azurerm_postgresql_flexible_server.main.fqdn
 }
+
+output "keycloak_url" {
+  description = "Public address of Keycloak (login and admin console)"
+  value       = local.keycloak_url
+}
