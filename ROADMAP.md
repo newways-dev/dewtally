@@ -76,8 +76,10 @@ No dates on purpose: the order matters, not the calendar.
 
 ## Layer 6 — Cloud deployment
 
-- [ ] Azure infrastructure with Terraform
-- [ ] CI/CD pipeline from pull request to deployment
+- [x] CI publishes the Docker image to GitHub Container Registry on every merge (tags: latest, commit, version)
+- [ ] Azure infrastructure with Terraform: Container Apps, PostgreSQL, Key Vault for secrets
+- [ ] Budget alert; the whole environment is created and removed with one command (terraform apply / destroy)
+- [ ] Deployment from the pipeline after a merge to main
 
 ## Layer 7 — UI and showcase
 
