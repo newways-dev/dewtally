@@ -47,6 +47,8 @@ No dates on purpose: the order matters, not the calendar.
 - [ ] Non-blocking retries with delay queues (today the pause between retries blocks the consumer)
 - [ ] Alerts: dead letter queue not empty, outbox growing, model latency too high
 - [ ] Role management per tenant: an admin of a company assigns roles to its users (today in Keycloak only)
+- [ ] Production database login without owner rights (today the app connects as the table owner and switches
+  to the restricted role per connection; Liquibase keeps a separate owner login)
 
 ## Layer 3 — Evals: measuring extraction quality ✅
 
@@ -65,12 +67,12 @@ No dates on purpose: the order matters, not the calendar.
 - [x] Parse untrusted files (PDF, XML) in the isolated worker with memory and CPU limits
 - [x] Metrics and dashboards (Micrometer, Prometheus, Grafana)
 
-## Layer 5 — SaaS
+## Layer 5 — SaaS ✅
 
 - [x] Login with Keycloak (OpenID Connect); the API only accepts valid tokens
 - [x] Tenant and user taken from the token instead of the X-Tenant-Id / X-User-Name headers
 - [x] Roles: clerk, approver, admin; permission matrix with deny by default, 401 / 403 as problem details
-- [ ] Tenant isolation with PostgreSQL Row-Level Security
+- [x] Tenant isolation with PostgreSQL Row-Level Security: the database itself only shows the current tenant's rows
 
 ## Layer 6 — Cloud deployment
 

@@ -9,8 +9,8 @@ official XRechnung rules and the company's own supplier master data, and tells y
 a human look and which are broken — and why.
 
 > Portfolio project, built step by step. Layers 1 (structured e-invoices), 2 (AI extraction and review),
-> 3 (evals: measuring AI quality) and 4 (production readiness) are done; SaaS is in progress (login, tenant from
-> the token and roles are done; Row-Level Security is next). See [ROADMAP.md](ROADMAP.md).
+> 3 (evals: measuring AI quality), 4 (production readiness) and 5 (SaaS: login, roles, tenant isolation) are done;
+> cloud deployment is next. See [ROADMAP.md](ROADMAP.md).
 
 ## What it does today
 
@@ -42,7 +42,8 @@ a human look and which are broken — and why.
 - **Observability**: metrics for processing time, model latency and confidence, invoice status, queue and dead
   letter queue size and outbox backlog, in Prometheus and a Grafana dashboard.
 - **Errors** in the standard RFC 9457 format (`application/problem+json`).
-- **Multi-tenant from day one**: every business table carries `tenant_id`.
+- **Tenant isolation in two layers**: every query filters by the company from the token, and PostgreSQL
+  Row-Level Security filters again, so even a query that forgets the filter cannot show another company's data.
 
 ## How it works
 
@@ -216,7 +217,9 @@ docker stats --no-stream        # the worker shows its 1 GiB limit
 Integration tests run against a real PostgreSQL and RabbitMQ in Docker (Testcontainers), so Docker must be running.
 Security tests simulate Keycloak-shaped tokens (test users anna, ben, carla), so no Keycloak is needed; a dedicated
 test proves that a user of one company can neither see nor change anything of another, and another one checks the
-permission matrix role by role. Most tests process uploads
+permission matrix role by role. Tests run as the restricted database role with Row-Level Security switched on;
+`RowLevelSecurityTest` sends queries without any tenant filter and shows that PostgreSQL still returns only the
+current company's rows. Most tests process uploads
 synchronously; dedicated tests cover background processing, an unreachable RabbitMQ and the dead letter queue.
 Tests that call the real model are skipped unless started with `-Dai=true`.
 
@@ -271,7 +274,12 @@ See [evals/README.md](evals/README.md) for the test set, the regression check an
 - **Idempotent upload.** A unique constraint on `(tenant_id, sha256)` makes double uploads harmless, even when they
   race.
 - **DTOs in the API, never entities.** The JSON contract is stable and does not leak internal fields.
-- **Tenant in every business table now**, so isolation (and later Row-Level Security) is not a rewrite.
+- **Row-Level Security as a second line of defence.** Code filters by tenant, and PostgreSQL filters again: before
+  Hibernate uses a connection, it switches to the role `dewtally_app` (which cannot bypass Row-Level Security) and
+  sets the tenant from the token. Without a tenant, the database shows nothing, so a mistake ends in "empty", never
+  in "everything". The worker only gets a document id from the queue; a narrow database function tells it the
+  document's tenant, so a forged message cannot choose one. Known limit: locally the application still connects as
+  the table owner and switches roles per connection; in production it gets its own login without owner rights.
 
 ## Roadmap
 
@@ -279,8 +287,8 @@ See [evals/README.md](evals/README.md) for the test set, the regression check an
 2. ✅ AI extraction for plain PDF invoices, review, supplier master data
 3. ✅ Evals: measuring extraction quality with numbers
 4. ✅ Production readiness: background worker, outbox, retries and DLQ, metrics
-5. 🔄 SaaS: login, tenant from the token and roles done; Row-Level Security next
-6. Azure deployment with Terraform
+5. ✅ SaaS: login with Keycloak, roles, tenant isolation with Row-Level Security
+6. 🔜 Azure deployment with Terraform
 7. UI and showcase
 
 Details: [ROADMAP.md](ROADMAP.md)
