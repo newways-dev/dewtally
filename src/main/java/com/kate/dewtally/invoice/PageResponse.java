@@ -5,6 +5,9 @@ import org.springframework.data.domain.Page;
 import java.util.List;
 import java.util.function.Function;
 
+/**
+ * One page of a list in the API: the items plus what a client needs for paging.
+ */
 public record PageResponse<T>(
         List<T> items,
         int page,
@@ -13,7 +16,7 @@ public record PageResponse<T>(
         int totalPages
 ) {
 
-    static <E, T> PageResponse<T> from(Page<E> page, Function<E, T> mapper) {
+    public static <E, T> PageResponse<T> from(Page<E> page, Function<E, T> mapper) {
         return new PageResponse<>(
                 page.getContent().stream().map(mapper).toList(),
                 page.getNumber(),
