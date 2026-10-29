@@ -18,3 +18,11 @@ variable "tags" {
     managed_by = "terraform"
   }
 }
+
+# No default and never in a file: set it in the shell before running Terraform,
+# PowerShell: $env:TF_VAR_openai_api_key = "..."
+variable "openai_api_key" {
+  description = "OpenAI API key for reading plain PDF invoices"
+  type        = string
+  sensitive   = true
+}

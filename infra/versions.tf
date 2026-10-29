@@ -16,5 +16,10 @@ terraform {
 
 # The subscription comes from the environment (ARM_SUBSCRIPTION_ID) or "az login", never from the code.
 provider "azurerm" {
-  features {}
+  features {
+    key_vault {
+      # "terraform destroy" removes the vault for good instead of leaving it in the recycle bin
+      purge_soft_delete_on_destroy = true
+    }
+  }
 }
