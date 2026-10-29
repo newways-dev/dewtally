@@ -12,3 +12,8 @@ output "keycloak_url" {
   description = "Public address of Keycloak (login and admin console)"
   value       = local.keycloak_url
 }
+
+output "api_url" {
+  description = "Public address of the dewtally API"
+  value       = "https://${azurerm_container_app.api.ingress[0].fqdn}"
+}
