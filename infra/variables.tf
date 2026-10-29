@@ -38,3 +38,15 @@ variable "image_tag" {
   type        = string
   default     = "latest"
 }
+
+variable "budget_amount" {
+  description = "Monthly budget of the environment in the subscription's currency"
+  type        = number
+  default     = 10
+}
+
+# Set in the shell, like the OpenAI key: $env:TF_VAR_budget_email = "..."
+variable "budget_email" {
+  description = "Where budget alerts are sent"
+  type        = string
+}
