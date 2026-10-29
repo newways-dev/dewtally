@@ -89,6 +89,7 @@ It runs in two roles: the **api** and a **worker** for the untrusted, slow part 
 | Tests                | JUnit 5, AssertJ, Mockito, MockMvc, Testcontainers                                       |
 | AI evals             | Own eval suite on ZUGFeRD samples and hard cases                                         |
 | CI                   | GitHub Actions: tests on every pull request, image to GitHub Container Registry on merge |
+| Infrastructure       | Terraform: Azure Container Apps, PostgreSQL Flexible Server, Key Vault                   |
 
 ## Run locally
 
@@ -215,6 +216,12 @@ docker pull ghcr.io/newways-dev/dewtally:latest
 - If a container cannot reach another one by name (`UnknownHostException: rabbitmq`), recreate them all:
   `docker compose --profile app up -d --force-recreate`.
 
+## Deploy to Azure
+
+The cloud environment is described with Terraform in [`infra/`](infra/README.md): api, worker, RabbitMQ and
+Keycloak as Azure Container Apps, PostgreSQL Flexible Server, Key Vault for all secrets and a budget alert.
+`terraform apply` creates it in Frankfurt, `terraform destroy` removes it completely.
+
 ## Tests
 
 ```bash
@@ -277,6 +284,10 @@ See [evals/README.md](evals/README.md) for the test set, the regression check an
   check, one person alone cannot both plant a fake IBAN and pay to it.
 - **Deny by default.** The permission matrix lives in one place (`SecurityConfig`); a new endpoint is forbidden until
   someone decides who may use it.
+- **Infrastructure as code, created on demand.** The whole Azure environment is Terraform code: it is created when
+  it is needed and destroyed afterwards, so it costs nothing in between. A budget alert warns before costs run away.
+- **No secret in code, images or container settings.** Terraform generates the passwords and stores them, together
+  with the OpenAI key, in Key Vault; the containers read them with a managed identity that may do nothing else.
 - **Liquibase with XML changelogs; Hibernate only validates the schema.** Database changes are explicit and reviewable.
 - **Idempotent upload.** A unique constraint on `(tenant_id, sha256)` makes double uploads harmless, even when they
   race.
@@ -295,7 +306,7 @@ See [evals/README.md](evals/README.md) for the test set, the regression check an
 3. ✅ Evals: measuring extraction quality with numbers
 4. ✅ Production readiness: background worker, outbox, retries and DLQ, metrics
 5. ✅ SaaS: login with Keycloak, roles, tenant isolation with Row-Level Security
-6. 🔄 Azure deployment with Terraform: the Docker image is published by CI; infrastructure is next
+6. 🔄 Azure deployment with Terraform: images published by CI, infrastructure code ready; first deployment next
 7. UI and showcase
 
 Details: [ROADMAP.md](ROADMAP.md)

@@ -49,6 +49,12 @@ No dates on purpose: the order matters, not the calendar.
 - [ ] Role management per tenant: an admin of a company assigns roles to its users (today in Keycloak only)
 - [ ] Production database login without owner rights (today the app connects as the table owner and switches
   to the restricted role per connection; Liquibase keeps a separate owner login)
+- [ ] Separate database users for the application and Keycloak in Azure
+- [ ] Documents in Azure Blob Storage instead of a mounted file share
+- [ ] PostgreSQL in a private virtual network instead of "allow Azure services"
+- [ ] RabbitMQ with persistent storage (today messages are lost when the broker restarts)
+- [ ] Terraform state in an Azure Storage backend instead of a local file
+- [ ] Scale the worker by queue length (KEDA)
 
 ## Layer 3 — Evals: measuring extraction quality ✅
 
@@ -76,9 +82,12 @@ No dates on purpose: the order matters, not the calendar.
 
 ## Layer 6 — Cloud deployment
 
-- [x] CI publishes the Docker image to GitHub Container Registry on every merge (tags: latest, commit, version)
-- [ ] Azure infrastructure with Terraform: Container Apps, PostgreSQL, Key Vault for secrets
-- [ ] Budget alert; the whole environment is created and removed with one command (terraform apply / destroy)
+- [x] CI publishes the images to GitHub Container Registry on every merge (application and Keycloak; tags: latest,
+  commit, version)
+- [x] Azure infrastructure with Terraform: Container Apps (api, worker, RabbitMQ, Keycloak), PostgreSQL,
+  Key Vault with a managed identity, file share for documents
+- [x] Budget alert; the whole environment is created and removed with one command (terraform apply / destroy)
+- [ ] First deployment to Azure (needs a subscription)
 - [ ] Deployment from the pipeline after a merge to main
 
 ## Layer 7 — UI and showcase
