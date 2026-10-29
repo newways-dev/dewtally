@@ -1,5 +1,5 @@
 # Continuous integration: build and test on every push to main and every pull request.
-# After a push to main (or a version tag), the Docker image is published to GitHub Container Registry.
+# After a push to main (or a version tag), the Docker images are published to GitHub Container Registry.
 name: CI
 
 on:
@@ -13,7 +13,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    # GITHUB_TOKEN may read the code and publish packages (the image); nothing else.
+    # GITHUB_TOKEN may read the code and publish packages (the images); nothing else.
     permissions:
       contents: read
       packages: write
@@ -49,10 +49,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Image tags: the commit (sha-...), "latest" for main, and the version for tags like v0.6.0
-      - name: Image tags and labels
+      - name: Set up Docker Buildx
         if: github.event_name == 'push'
-        id: meta
+        uses: docker/setup-buildx-action@v3
+
+      # Image tags: the commit (sha-...), "latest" for main, and the version for tags like v0.6.0
+      - name: Application image tags and labels
+        if: github.event_name == 'push'
+        id: meta_app
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
@@ -61,15 +65,32 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
 
-      - name: Set up Docker Buildx
-        if: github.event_name == 'push'
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and push image
+      - name: Build and push application image
         if: github.event_name == 'push'
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.meta_app.outputs.tags }}
+          labels: ${{ steps.meta_app.outputs.labels }}
+
+      # Keycloak with the dewtally realm built in (used in Azure, where no file can be mounted)
+      - name: Keycloak image tags and labels
+        if: github.event_name == 'push'
+        id: meta_keycloak
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}-keycloak
+          tags: |
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+
+      - name: Build and push Keycloak image
+        if: github.event_name == 'push'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./keycloak
+          push: true
+          tags: ${{ steps.meta_keycloak.outputs.tags }}
+          labels: ${{ steps.meta_keycloak.outputs.labels }}
