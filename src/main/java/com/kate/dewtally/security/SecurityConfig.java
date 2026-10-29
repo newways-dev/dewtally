@@ -43,6 +43,8 @@ class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // Health checks and metrics; on the api they are on a port not published outside Docker
                         .requestMatchers("/actuator/health/**", "/actuator/prometheus").permitAll()
+                        // API description and Swagger UI: no secret in them, every endpoint still needs a token
+                        .requestMatchers("/v3/api-docs/**", "/swagger-ui.html", "/swagger-ui/**").permitAll()
                         // Reading: every business role
                         .requestMatchers(HttpMethod.GET, "/api/**").hasAnyRole(CLERK, APPROVER, ADMIN)
                         // Entering invoices: clerk
