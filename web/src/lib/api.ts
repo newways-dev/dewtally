@@ -17,13 +17,13 @@ export class ApiError extends Error {
 }
 
 /**
- * Calls the dewtally API from the Next.js server with the user's token.
+ * Calls the dewtally API from the Next.js server with the user's token and returns the raw response.
  * The browser never talks to the API directly and never sees the token.
  */
-export async function apiFetch<T>(
+export async function apiRequest(
   path: string,
   init: RequestInit = {},
-): Promise<T> {
+): Promise<Response> {
   const token = await getAccessToken()
   if (!token) {
     redirect('/login')
@@ -48,5 +48,14 @@ export async function apiFetch<T>(
       problem.detail,
     )
   }
+  return response
+}
+
+/** Same as apiRequest, for JSON answers. */
+export async function apiFetch<T>(
+  path: string,
+  init: RequestInit = {},
+): Promise<T> {
+  const response = await apiRequest(path, init)
   return (await response.json()) as T
 }
