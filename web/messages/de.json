@@ -1,7 +1,8 @@
 {
   "common": {
     "language": "Sprache",
-    "themeToggle": "Helles oder dunkles Design"
+    "themeToggle": "Helles oder dunkles Design",
+    "toggleSidebar": "Menü ein- oder ausblenden"
   },
   "nav": {
     "main": "Hauptnavigation",
@@ -90,6 +91,8 @@
     "unknownSupplier": "Unbekannter Lieferant",
     "findings": "{count, plural, one {# Hinweis} other {# Hinweise}}",
     "empty": "Keine Rechnungen für diesen Filter.",
+    "emptyTitle": "Keine Rechnungen",
+    "clearFilter": "Alle Rechnungen anzeigen",
     "pagination": "Seiten",
     "pageOf": "Seite {page} von {pages}",
     "previous": "Vorherige Seite",

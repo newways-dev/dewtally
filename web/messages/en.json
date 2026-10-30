@@ -1,7 +1,8 @@
 {
   "common": {
     "language": "Language",
-    "themeToggle": "Switch light or dark theme"
+    "themeToggle": "Switch light or dark theme",
+    "toggleSidebar": "Show or hide the menu"
   },
   "nav": {
     "main": "Main navigation",
@@ -90,6 +91,8 @@
     "unknownSupplier": "Unknown supplier",
     "findings": "{count, plural, one {# finding} other {# findings}}",
     "empty": "No invoices match this filter.",
+    "emptyTitle": "No invoices",
+    "clearFilter": "Show all invoices",
     "pagination": "Pages",
     "pageOf": "Page {page} of {pages}",
     "previous": "Previous page",

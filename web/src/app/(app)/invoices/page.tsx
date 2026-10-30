@@ -1,12 +1,31 @@
-import { ChevronLeft, ChevronRight, Plus, Search } from 'lucide-react'
+import {
+  ChevronLeft,
+  ChevronRight,
+  FileSearch,
+  Plus,
+  Search,
+} from 'lucide-react'
 import Link from 'next/link'
 import { getFormatter, getTranslations } from 'next-intl/server'
 
 import { PageHeader } from '@/components/page-header'
 import { StatusBadge, type InvoiceStatus } from '@/components/status-badge'
+import { Badge } from '@/components/ui/badge'
 import { buttonVariants } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@/components/ui/input-group'
 import {
   Table,
   TableBody,
@@ -18,7 +37,6 @@ import {
 import { apiFetch } from '@/lib/api'
 import type { components } from '@/lib/api-types'
 import { cn } from '@/lib/utils'
-import { Badge } from '@/components/ui/badge'
 
 type InvoiceCounts = components['schemas']['InvoiceCountsResponse']
 type InvoicePage = components['schemas']['PageResponseInvoiceSummaryResponse']
@@ -107,10 +125,7 @@ export default async function InvoicesPage({
         actions={
           <Link
             href='/upload'
-            className={cn(
-              buttonVariants(),
-              'inline-flex items-center gap-1.5 whitespace-nowrap',
-            )}
+            className={cn(buttonVariants(), 'whitespace-nowrap')}
           >
             <Plus aria-hidden='true' />
             {t('upload')}
@@ -128,7 +143,10 @@ export default async function InvoicesPage({
             href={listHref({ status: card })}
             className='rounded-xl'
           >
-            <Card className='h-full gap-1.5 p-4 shadow-none transition-colors hover:bg-accent'>
+            <Card
+              size='sm'
+              className='h-full gap-1.5 px-4 shadow-none transition-colors hover:bg-accent'
+            >
               <span className='flex items-center gap-2 text-sm text-muted-foreground'>
                 <span
                   aria-hidden='true'
@@ -147,7 +165,7 @@ export default async function InvoicesPage({
         ))}
       </section>
 
-      <Card className='gap-0 overflow-hidden py-0 shadow-none'>
+      <Card className='gap-0 py-0 shadow-none'>
         <div className='flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3'>
           <nav aria-label={t('filter')} className='flex flex-wrap gap-1'>
             <FilterTab
@@ -171,115 +189,132 @@ export default async function InvoicesPage({
           <form
             action='/invoices'
             role='search'
-            className='relative flex min-w-52 flex-[0_1_300px]'
+            className='min-w-52 flex-[0_1_300px]'
           >
             {status && <input type='hidden' name='status' value={status} />}
-            <Search
-              className='pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-subtle'
-              aria-hidden='true'
-            />
-            <Input
-              type='search'
-              name='q'
-              defaultValue={q}
-              placeholder={t('search')}
-              aria-label={t('search')}
-              className='pl-9'
-            />
+            <InputGroup>
+              <InputGroupAddon>
+                <Search aria-hidden='true' />
+              </InputGroupAddon>
+              <InputGroupInput
+                type='search'
+                name='q'
+                defaultValue={q}
+                placeholder={t('search')}
+                aria-label={t('search')}
+              />
+            </InputGroup>
           </form>
         </div>
 
-        <Table className='min-w-[960px]'>
-          <TableHeader>
-            <TableRow className='hover:bg-transparent'>
-              <TableHead className='pl-5'>{t('columns.supplier')}</TableHead>
-              <TableHead>{t('columns.number')}</TableHead>
-              <TableHead>{t('columns.issued')}</TableHead>
-              <TableHead>{t('columns.due')}</TableHead>
-              <TableHead className='text-right'>
-                {t('columns.amount')}
-              </TableHead>
-              <TableHead>{t('columns.source')}</TableHead>
-              <TableHead className='pr-5'>{t('columns.status')}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {items.map((invoice) => {
-              const issueCount = invoice.issueCount ?? 0
-              return (
-                <TableRow key={invoice.id} className='relative'>
-                  <TableCell className='pl-5'>
-                    {/* The link covers the whole row (after:absolute), so the row is one big click target */}
-                    <Link
-                      href={`/invoices/${invoice.id}`}
-                      className='font-medium after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring'
-                    >
-                      {invoice.supplierName ?? t('unknownSupplier')}
-                    </Link>
-                    {invoice.supplierVatId && (
-                      <span className='block font-mono text-xs text-subtle'>
-                        {invoice.supplierVatId}
-                      </span>
-                    )}
-                  </TableCell>
-                  <TableCell className='font-mono text-[13px]'>
-                    {invoice.invoiceNumber ?? '—'}
-                  </TableCell>
-                  <TableCell className='text-muted-foreground'>
-                    {formatDate(invoice.issueDate)}
-                  </TableCell>
-                  <TableCell className='text-muted-foreground'>
-                    {formatDate(invoice.dueDate)}
-                  </TableCell>
-                  <TableCell className='text-right font-mono font-medium tabular-nums'>
-                    {invoice.grossAmount != null
-                      ? format.number(invoice.grossAmount, {
-                          style: 'currency',
-                          currency: invoice.currency ?? 'EUR',
-                        })
-                      : '—'}
-                  </TableCell>
-                  <TableCell>
-                    {invoice.extractionMethod && (
-                      <span className='flex items-center gap-1.5'>
-                        <Badge
-                          variant='outline'
-                          className='font-normal text-muted-foreground'
-                        >
-                          {t(`source.${invoice.extractionMethod}`)}
-                        </Badge>
-                        {invoice.extractionMethod === 'LLM' &&
-                          invoice.extractionConfidence != null && (
-                            <span className='font-mono text-xs text-subtle'>
-                              {format.number(invoice.extractionConfidence, {
-                                style: 'percent',
-                              })}
-                            </span>
-                          )}
-                      </span>
-                    )}
-                  </TableCell>
-                  <TableCell className='pr-5'>
-                    <span className='flex flex-col items-start gap-0.5'>
-                      {invoice.status && (
-                        <StatusBadge status={invoice.status} />
-                      )}
-                      {issueCount > 0 && (
-                        <span className='text-xs text-subtle'>
-                          {t('findings', { count: issueCount })}
+        {items.length === 0 ? (
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant='icon'>
+                <FileSearch aria-hidden='true' />
+              </EmptyMedia>
+              <EmptyTitle>{t('emptyTitle')}</EmptyTitle>
+              <EmptyDescription>{t('empty')}</EmptyDescription>
+            </EmptyHeader>
+            {(status || q) && (
+              <EmptyContent>
+                <Link
+                  href='/invoices'
+                  className={buttonVariants({ variant: 'outline', size: 'sm' })}
+                >
+                  {t('clearFilter')}
+                </Link>
+              </EmptyContent>
+            )}
+          </Empty>
+        ) : (
+          <Table className='min-w-[960px]'>
+            <TableHeader>
+              <TableRow className='hover:bg-transparent'>
+                <TableHead className='pl-5'>{t('columns.supplier')}</TableHead>
+                <TableHead>{t('columns.number')}</TableHead>
+                <TableHead>{t('columns.issued')}</TableHead>
+                <TableHead>{t('columns.due')}</TableHead>
+                <TableHead className='text-right'>
+                  {t('columns.amount')}
+                </TableHead>
+                <TableHead>{t('columns.source')}</TableHead>
+                <TableHead className='pr-5'>{t('columns.status')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.map((invoice) => {
+                const issueCount = invoice.issueCount ?? 0
+                return (
+                  <TableRow key={invoice.id} className='relative'>
+                    <TableCell className='pl-5'>
+                      {/* The link covers the whole row (after:absolute), so the row is one big click target */}
+                      <Link
+                        href={`/invoices/${invoice.id}`}
+                        className='font-medium after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring'
+                      >
+                        {invoice.supplierName ?? t('unknownSupplier')}
+                      </Link>
+                      {invoice.supplierVatId && (
+                        <span className='block font-mono text-xs text-subtle'>
+                          {invoice.supplierVatId}
                         </span>
                       )}
-                    </span>
-                  </TableCell>
-                </TableRow>
-              )
-            })}
-          </TableBody>
-        </Table>
-        {items.length === 0 && (
-          <p className='px-5 py-10 text-center text-muted-foreground'>
-            {t('empty')}
-          </p>
+                    </TableCell>
+                    <TableCell className='font-mono text-[13px]'>
+                      {invoice.invoiceNumber ?? '—'}
+                    </TableCell>
+                    <TableCell className='text-muted-foreground'>
+                      {formatDate(invoice.issueDate)}
+                    </TableCell>
+                    <TableCell className='text-muted-foreground'>
+                      {formatDate(invoice.dueDate)}
+                    </TableCell>
+                    <TableCell className='text-right font-mono font-medium tabular-nums'>
+                      {invoice.grossAmount != null
+                        ? format.number(invoice.grossAmount, {
+                            style: 'currency',
+                            currency: invoice.currency ?? 'EUR',
+                          })
+                        : '—'}
+                    </TableCell>
+                    <TableCell>
+                      {invoice.extractionMethod && (
+                        <span className='flex items-center gap-1.5'>
+                          <Badge
+                            variant='outline'
+                            className='font-normal text-muted-foreground'
+                          >
+                            {t(`source.${invoice.extractionMethod}`)}
+                          </Badge>
+                          {invoice.extractionMethod === 'LLM' &&
+                            invoice.extractionConfidence != null && (
+                              <span className='font-mono text-xs text-subtle'>
+                                {format.number(invoice.extractionConfidence, {
+                                  style: 'percent',
+                                })}
+                              </span>
+                            )}
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className='pr-5'>
+                      <span className='flex flex-col items-start gap-0.5'>
+                        {invoice.status && (
+                          <StatusBadge status={invoice.status} />
+                        )}
+                        {issueCount > 0 && (
+                          <span className='text-xs text-subtle'>
+                            {t('findings', { count: issueCount })}
+                          </span>
+                        )}
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
         )}
 
         {totalPages > 1 && (
@@ -334,7 +369,6 @@ function FilterTab({
       aria-current={active ? 'page' : undefined}
       className={cn(
         buttonVariants({ variant: active ? 'secondary' : 'ghost', size: 'sm' }),
-        'inline-flex items-center gap-1.5',
         !active && 'text-muted-foreground',
       )}
     >
@@ -353,10 +387,7 @@ function PageLink({
   label: string
   children: React.ReactNode
 }) {
-  const className = cn(
-    buttonVariants({ variant: 'outline', size: 'icon' }),
-    'inline-flex items-center justify-center',
-  )
+  const className = buttonVariants({ variant: 'outline', size: 'icon' })
   if (!href) {
     return (
       <span

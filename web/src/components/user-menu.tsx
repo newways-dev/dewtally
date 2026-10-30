@@ -1,46 +1,83 @@
-import { LogOut } from 'lucide-react'
-import { getTranslations } from 'next-intl/server'
+'use client'
 
-import { Button } from '@/components/ui/button'
+import { ChevronsUpDown, LogOut } from 'lucide-react'
+
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  useSidebar,
+} from '@/components/ui/sidebar'
 import { logout } from '@/lib/auth-actions'
-import type { CurrentUser } from '@/lib/session'
 
-// Who is logged in, at the bottom of the navigation, with the logout button.
-export async function UserMenu({ user }: { user: CurrentUser }) {
-  const t = await getTranslations()
-  const initials = user.name
+// Who is logged in, at the bottom of the sidebar; the menu holds the logout.
+export function UserMenu({
+  name,
+  role,
+  signOutLabel,
+}: {
+  name: string
+  role: string
+  signOutLabel: string
+}) {
+  const { isMobile } = useSidebar()
+  const initials = name
     .split(' ')
     .map((part) => part[0])
     .join('')
     .slice(0, 2)
     .toUpperCase()
-  const role = user.roles[0]
 
   return (
-    <div className='mt-auto flex items-center gap-2.5 border-t pt-3'>
-      <span
-        aria-hidden='true'
-        className='flex size-8 shrink-0 items-center justify-center rounded-full bg-brand-soft text-[13px] font-semibold text-brand-soft-foreground'
-      >
-        {initials}
-      </span>
-      <span className='flex min-w-0 flex-1 flex-col leading-tight'>
-        <span className='truncate font-medium'>{user.name}</span>
-        <span className='truncate text-xs text-muted-foreground'>
-          {role ? t(`roles.${role}`) : t('roles.none')}
-        </span>
-      </span>
-      <form action={logout}>
-        <Button
-          type='submit'
-          variant='ghost'
-          size='icon'
-          aria-label={t('nav.signOut')}
-          title={t('nav.signOut')}
-        >
-          <LogOut aria-hidden='true' />
-        </Button>
-      </form>
-    </div>
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<SidebarMenuButton size='lg' />}>
+            <Avatar>
+              <AvatarFallback className='bg-brand-soft text-[13px] font-semibold text-brand-soft-foreground'>
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+            <span className='grid flex-1 text-left leading-tight'>
+              <span className='truncate font-medium'>{name}</span>
+              <span className='truncate text-xs text-muted-foreground'>
+                {role}
+              </span>
+            </span>
+            <ChevronsUpDown className='ml-auto' aria-hidden='true' />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            side={isMobile ? 'bottom' : 'right'}
+            align='end'
+            sideOffset={8}
+            className='min-w-56'
+          >
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>
+                <span className='block text-sm font-medium text-foreground'>
+                  {name}
+                </span>
+                <span className='block font-normal'>{role}</span>
+              </DropdownMenuLabel>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => logout()}>
+              <LogOut aria-hidden='true' />
+              {signOutLabel}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarMenuItem>
+    </SidebarMenu>
   )
 }
