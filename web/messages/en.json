@@ -120,5 +120,54 @@
     "ACCEPTED": "Accepted",
     "REJECTED": "Rejected",
     "EXPORTED": "Exported"
+  },
+  "detail": {
+    "back": "All invoices",
+    "unknownSupplier": "Unknown supplier",
+    "issued": "issued {date}",
+    "due": "due {date}",
+    "amountDue": "Amount due",
+    "original": "Original document",
+    "download": "Download",
+    "noPreview": "This file cannot be shown here.",
+    "pageCount": "{count, plural, one {# page} other {# pages}}",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "pdfError": "The PDF could not be shown. You can still download it.",
+    "findings": "Findings",
+    "noFindings": "All checks passed.",
+    "supplier": "Supplier",
+    "name": "Name",
+    "vatId": "VAT ID",
+    "iban": "IBAN",
+    "buyerReference": "Buyer reference",
+    "lines": "Lines and amounts",
+    "extraction": {
+      "STRUCTURED": "Read from the e-invoice",
+      "LLM": "Read by AI · {confidence} confidence",
+      "MANUAL": "Entered manually"
+    },
+    "description": "Description",
+    "quantity": "Quantity",
+    "net": "Net",
+    "allowances": "Allowances",
+    "charges": "Charges",
+    "netTotal": "Net total",
+    "tax": "VAT",
+    "gross": "Total",
+    "history": "History",
+    "noHistory": "No changes yet.",
+    "changes": {
+      "CORRECTION": "{who} corrected {field}",
+      "ACCEPTED": "{who} approved the invoice for payment",
+      "REJECTED": "{who} rejected the invoice"
+    },
+    "notFound": "Invoice not found",
+    "notFoundText": "It does not exist, or it belongs to another company."
+  },
+  "errors": {
+    "title": "Something went wrong",
+    "text": "The page could not be loaded. Please try again in a moment.",
+    "retry": "Try again"
   }
 }

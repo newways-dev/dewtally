@@ -120,5 +120,54 @@
     "ACCEPTED": "Freigegeben",
     "REJECTED": "Abgelehnt",
     "EXPORTED": "Exportiert"
+  },
+  "detail": {
+    "back": "Alle Rechnungen",
+    "unknownSupplier": "Unbekannter Lieferant",
+    "issued": "vom {date}",
+    "due": "fällig {date}",
+    "amountDue": "Zahlbetrag",
+    "original": "Originaldokument",
+    "download": "Herunterladen",
+    "noPreview": "Diese Datei kann hier nicht angezeigt werden.",
+    "pageCount": "{count, plural, one {# Seite} other {# Seiten}}",
+    "zoomIn": "Vergrößern",
+    "zoomOut": "Verkleinern",
+    "pdfError": "Das PDF konnte nicht angezeigt werden. Sie können es trotzdem herunterladen.",
+    "findings": "Hinweise",
+    "noFindings": "Alle Prüfungen bestanden.",
+    "supplier": "Lieferant",
+    "name": "Name",
+    "vatId": "USt-IdNr.",
+    "iban": "IBAN",
+    "buyerReference": "Leitweg-ID / Käuferreferenz",
+    "lines": "Positionen und Beträge",
+    "extraction": {
+      "STRUCTURED": "Aus der E-Rechnung gelesen",
+      "LLM": "Von KI erfasst · {confidence} Sicherheit",
+      "MANUAL": "Manuell erfasst"
+    },
+    "description": "Beschreibung",
+    "quantity": "Menge",
+    "net": "Netto",
+    "allowances": "Nachlässe",
+    "charges": "Zuschläge",
+    "netTotal": "Nettosumme",
+    "tax": "USt.",
+    "gross": "Gesamt",
+    "history": "Historie",
+    "noHistory": "Noch keine Änderungen.",
+    "changes": {
+      "CORRECTION": "{who} hat {field} korrigiert",
+      "ACCEPTED": "{who} hat die Rechnung zur Zahlung freigegeben",
+      "REJECTED": "{who} hat die Rechnung abgelehnt"
+    },
+    "notFound": "Rechnung nicht gefunden",
+    "notFoundText": "Sie existiert nicht oder gehört zu einem anderen Unternehmen."
+  },
+  "errors": {
+    "title": "Etwas ist schiefgelaufen",
+    "text": "Die Seite konnte nicht geladen werden. Bitte versuchen Sie es gleich noch einmal.",
+    "retry": "Erneut versuchen"
   }
 }
