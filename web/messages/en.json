@@ -7,13 +7,52 @@
     "main": "Main navigation",
     "invoices": "Invoices",
     "upload": "Upload",
-    "suppliers": "Suppliers"
+    "suppliers": "Suppliers",
+    "signOut": "Sign out"
+  },
+  "roles": {
+    "clerk": "Clerk",
+    "approver": "Approver",
+    "admin": "Admin",
+    "none": "No role"
+  },
+  "login": {
+    "headline": "Incoming invoices, checked before anyone pays.",
+    "points": {
+      "rules": {
+        "title": "E-invoices by the official rules",
+        "text": "XRechnung and ZUGFeRD are validated with the KoSIT validator."
+      },
+      "ai": {
+        "title": "AI reads, people decide",
+        "text": "Plain PDFs are read by AI; anything uncertain goes to a person."
+      },
+      "fourEyes": {
+        "title": "Bank details need four eyes",
+        "text": "A new or changed IBAN is only trusted after a second person confirms it."
+      }
+    },
+    "footer": "Portfolio project · Invoice data stays in Germany.",
+    "title": "Sign in",
+    "text": "Use your company account.",
+    "continue": "Continue with company login",
+    "redirectNote": "You will be redirected to the login page (Keycloak).",
+    "failed": "The login did not work. Please try again.",
+    "demoTitle": "Demo accounts",
+    "demoHint": "The password equals the user name.",
+    "demoRoles": {
+      "clerkDemo": "Clerk · Demo GmbH",
+      "approverDemo": "Approver · Demo GmbH",
+      "adminDemo": "Admin · Demo GmbH",
+      "clerkOther": "Clerk · Other AG"
+    }
   },
   "invoices": {
     "title": "Invoices",
     "subtitle": "Incoming invoices of your company",
     "upload": "Upload invoice",
-    "amountDue": "Amount due"
+    "amountDue": "Amount due",
+    "total": "Invoices in total"
   },
   "upload": {
     "title": "Upload invoices",
