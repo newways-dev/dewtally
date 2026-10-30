@@ -1,0 +1,24 @@
+{
+  "common": {
+    "language": "Sprache",
+    "themeToggle": "Helles oder dunkles Design"
+  },
+  "invoices": {
+    "title": "Rechnungen",
+    "subtitle": "Eingangsrechnungen der Demo GmbH",
+    "amountDue": "Zahlbetrag"
+  },
+  "actions": {
+    "approve": "Zur Zahlung freigeben",
+    "correct": "Daten korrigieren",
+    "download": "Herunterladen",
+    "reject": "Ablehnen"
+  },
+  "status": {
+    "NEEDS_REVIEW": "Zu prüfen",
+    "INVALID": "Fehlerhaft",
+    "VALID": "Gültig",
+    "ACCEPTED": "Freigegeben",
+    "REJECTED": "Abgelehnt"
+  }
+}

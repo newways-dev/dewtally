@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
+import { NextIntlClientProvider } from 'next-intl'
+import { getLocale } from 'next-intl/server'
 import './globals.css'
 import { ThemeProvider } from '@/components/theme-provider'
 import { cn } from '@/lib/utils'
@@ -19,11 +21,14 @@ export const metadata: Metadata = {
   description: 'Incoming invoices and e-invoices, checked before anyone pays.',
 }
 
-export default function RootLayout({ children }: LayoutProps<'/'>) {
+export default async function RootLayout({ children }: LayoutProps<'/'>) {
+  const locale = await getLocale()
+
   return (
-    // suppressHydrationWarning: next-themes sets the "dark" class before React starts, on purpose
+    // lang tells screen readers and the browser's spell check which language the page is in.
+    // suppressHydrationWarning: next-themes sets the "dark" class before React starts, on purpose.
     <html
-      lang='en'
+      lang={locale}
       className={cn(
         'h-full antialiased',
         geistSans.variable,
@@ -32,14 +37,16 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
       suppressHydrationWarning
     >
       <body className='min-h-full flex flex-col'>
-        <ThemeProvider
-          attribute='class'
-          defaultTheme='system'
-          enableSystem
-          disableTransitionOnChange
-        >
-          {children}
-        </ThemeProvider>
+        <NextIntlClientProvider>
+          <ThemeProvider
+            attribute='class'
+            defaultTheme='system'
+            enableSystem
+            disableTransitionOnChange
+          >
+            {children}
+          </ThemeProvider>
+        </NextIntlClientProvider>
       </body>
     </html>
   )

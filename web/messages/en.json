@@ -1,0 +1,24 @@
+{
+  "common": {
+    "language": "Language",
+    "themeToggle": "Switch light or dark theme"
+  },
+  "invoices": {
+    "title": "Invoices",
+    "subtitle": "Incoming invoices of Demo GmbH",
+    "amountDue": "Amount due"
+  },
+  "actions": {
+    "approve": "Approve for payment",
+    "correct": "Correct data",
+    "download": "Download",
+    "reject": "Reject"
+  },
+  "status": {
+    "NEEDS_REVIEW": "Needs review",
+    "INVALID": "Invalid",
+    "VALID": "Valid",
+    "ACCEPTED": "Accepted",
+    "REJECTED": "Rejected"
+  }
+}
