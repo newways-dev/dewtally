@@ -6,6 +6,14 @@ import { LocaleSwitch } from '@/components/locale-switch'
 import { Logo } from '@/components/logo'
 import { SignInButton } from '@/components/sign-in-button'
 import { ThemeToggle } from '@/components/theme-toggle'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import { getCurrentUser } from '@/lib/session'
 
 const points = ['rules', 'ai', 'fourEyes'] as const
@@ -59,26 +67,28 @@ export default async function LoginPage({ searchParams }: PageProps<'/login'>) {
           <ThemeToggle label={common('themeToggle')} />
         </div>
         <div className='flex flex-1 items-center justify-center py-8'>
-          <div className='flex w-full max-w-sm flex-col gap-6'>
-            <div>
-              <h2 className='text-2xl font-semibold tracking-tight'>
+          <Card className='w-full max-w-sm'>
+            <CardHeader>
+              <CardTitle className='text-2xl font-semibold tracking-tight'>
                 {t('title')}
-              </h2>
-              <p className='mt-1 text-muted-foreground'>{t('text')}</p>
-            </div>
-            {error && (
-              <p
-                role='alert'
-                className='rounded-lg bg-status-invalid px-3 py-2 text-sm text-status-invalid-foreground'
-              >
-                {t('failed')}
+              </CardTitle>
+              <CardDescription>{t('text')}</CardDescription>
+            </CardHeader>
+            <CardContent className='gap-3'>
+              {error && (
+                <p
+                  role='alert'
+                  className='rounded-lg bg-status-invalid px-3 py-2 text-sm text-status-invalid-foreground'
+                >
+                  {t('failed')}
+                </p>
+              )}
+              <SignInButton label={t('continue')} />
+              <p className='text-center text-xs text-subtle'>
+                {t('redirectNote')}
               </p>
-            )}
-            <SignInButton label={t('continue')} />
-            <p className='text-center text-xs text-subtle'>
-              {t('redirectNote')}
-            </p>
-            <div className='flex flex-col gap-2 rounded-xl border border-dashed bg-card px-4 py-3.5'>
+            </CardContent>
+            <CardFooter className='flex-col items-stretch gap-2 border-t'>
               <span className='text-sm font-medium'>{t('demoTitle')}</span>
               <dl className='grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm'>
                 {demoUsers.map(({ user, role }) => (
@@ -91,8 +101,8 @@ export default async function LoginPage({ searchParams }: PageProps<'/login'>) {
                 ))}
               </dl>
               <span className='text-xs text-subtle'>{t('demoHint')}</span>
-            </div>
-          </div>
+            </CardFooter>
+          </Card>
         </div>
       </main>
     </div>

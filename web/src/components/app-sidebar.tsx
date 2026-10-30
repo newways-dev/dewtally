@@ -6,8 +6,20 @@ import { usePathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import type { ReactNode } from 'react'
 
-import { Logo } from '@/components/logo'
-import { cn } from '@/lib/utils'
+import { LogoMark } from '@/components/logo'
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarRail,
+  useSidebar,
+} from '@/components/ui/sidebar'
 
 const items = [
   { href: '/invoices', key: 'invoices', icon: FileText },
@@ -15,45 +27,65 @@ const items = [
   { href: '/suppliers', key: 'suppliers', icon: Building2 },
 ] as const
 
-// Main navigation. A client component only because it highlights the current page;
-// the user block at the bottom is rendered on the server and passed in.
-export function AppSidebar({ footer }: { footer?: ReactNode }) {
+// shadcn Sidebar: collapses to icons on a desktop (Ctrl+B or the rail), slides in as a panel on a phone.
+// The user menu at the bottom is passed in from the server.
+export function AppSidebar({ footer }: { footer: ReactNode }) {
   const t = useTranslations('nav')
   const pathname = usePathname()
+  const { setOpenMobile } = useSidebar()
 
   return (
-    <nav
-      aria-label={t('main')}
-      className='flex flex-[1_1_232px] flex-col gap-6 border-sidebar-border bg-sidebar px-4 py-5 text-sidebar-foreground md:max-w-[260px] md:border-r'
-    >
-      <Link href='/invoices' className='rounded-lg px-2 py-1'>
-        <Logo />
-      </Link>
+    <Sidebar collapsible='icon' aria-label={t('main')}>
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              size='lg'
+              render={<Link href='/invoices' />}
+              onClick={() => setOpenMobile(false)}
+            >
+              <LogoMark className='size-7! shrink-0' />
+              <span className='text-[17px] font-semibold tracking-tight'>
+                dewtally
+              </span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
 
-      <ul className='flex flex-col gap-0.5'>
-        {items.map(({ href, key, icon: Icon }) => {
-          const active = pathname === href || pathname.startsWith(`${href}/`)
-          return (
-            <li key={href}>
-              <Link
-                href={href}
-                aria-current={active ? 'page' : undefined}
-                className={cn(
-                  'flex min-h-10 items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors',
-                  active
-                    ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground'
-                    : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                )}
-              >
-                <Icon className='size-[18px]' aria-hidden='true' />
-                {t(key)}
-              </Link>
-            </li>
-          )
-        })}
-      </ul>
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {items.map(({ href, key, icon: Icon }) => {
+                const active =
+                  pathname === href || pathname.startsWith(`${href}/`)
+                return (
+                  <SidebarMenuItem key={href}>
+                    <SidebarMenuButton
+                      render={
+                        <Link
+                          href={href}
+                          aria-current={active ? 'page' : undefined}
+                        />
+                      }
+                      isActive={active}
+                      tooltip={t(key)}
+                      onClick={() => setOpenMobile(false)}
+                    >
+                      <Icon aria-hidden='true' />
+                      <span>{t(key)}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
 
-      {footer}
-    </nav>
+      <SidebarFooter>{footer}</SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
   )
 }

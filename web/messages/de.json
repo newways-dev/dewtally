@@ -1,7 +1,8 @@
 {
   "common": {
     "language": "Sprache",
-    "themeToggle": "Helles oder dunkles Design"
+    "themeToggle": "Helles oder dunkles Design",
+    "toggleSidebar": "Menü ein- oder ausblenden"
   },
   "nav": {
     "main": "Hauptnavigation",
@@ -52,7 +53,50 @@
     "subtitle": "Eingangsrechnungen Ihres Unternehmens",
     "upload": "Rechnung hochladen",
     "amountDue": "Zahlbetrag",
-    "total": "Rechnungen insgesamt"
+    "total": "Rechnungen insgesamt",
+    "summary": "Übersicht",
+    "cards": {
+      "NEEDS_REVIEW": {
+        "label": "Zu prüfen",
+        "hint": "warten auf eine Person"
+      },
+      "INVALID": { "label": "Fehlerhaft", "hint": "Fehler in der Rechnung" },
+      "VALID": { "label": "Gültig", "hint": "bereit zur Freigabe" },
+      "ACCEPTED": { "label": "Freigegeben", "hint": "zur Zahlung freigegeben" }
+    },
+    "filter": "Nach Status filtern",
+    "all": "Alle",
+    "tabs": {
+      "NEEDS_REVIEW": "Zu prüfen",
+      "INVALID": "Fehlerhaft",
+      "VALID": "Gültig",
+      "ACCEPTED": "Freigegeben",
+      "REJECTED": "Abgelehnt"
+    },
+    "search": "Lieferant oder Rechnungsnummer suchen",
+    "columns": {
+      "supplier": "Lieferant",
+      "number": "Rechnungsnr.",
+      "issued": "Datum",
+      "due": "Fällig",
+      "amount": "Betrag",
+      "source": "Quelle",
+      "status": "Status"
+    },
+    "source": {
+      "STRUCTURED": "E-Rechnung",
+      "LLM": "PDF · KI",
+      "MANUAL": "Manuell"
+    },
+    "unknownSupplier": "Unbekannter Lieferant",
+    "findings": "{count, plural, one {# Hinweis} other {# Hinweise}}",
+    "empty": "Keine Rechnungen für diesen Filter.",
+    "emptyTitle": "Keine Rechnungen",
+    "clearFilter": "Alle Rechnungen anzeigen",
+    "pagination": "Seiten",
+    "pageOf": "Seite {page} von {pages}",
+    "previous": "Vorherige Seite",
+    "next": "Nächste Seite"
   },
   "upload": {
     "title": "Rechnungen hochladen",
@@ -69,10 +113,12 @@
     "reject": "Ablehnen"
   },
   "status": {
+    "RECEIVED": "Eingegangen",
     "NEEDS_REVIEW": "Zu prüfen",
     "INVALID": "Fehlerhaft",
     "VALID": "Gültig",
     "ACCEPTED": "Freigegeben",
-    "REJECTED": "Abgelehnt"
+    "REJECTED": "Abgelehnt",
+    "EXPORTED": "Exportiert"
   }
 }
