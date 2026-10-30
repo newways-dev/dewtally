@@ -10,6 +10,7 @@ import { notFound } from 'next/navigation'
 import { getFormatter, getTranslations } from 'next-intl/server'
 
 import { InvoiceDocument } from '@/components/invoice-document'
+import { InvoiceActions } from '@/components/review/invoice-actions'
 import { StatusBadge } from '@/components/status-badge'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -25,6 +26,7 @@ import {
 } from '@/components/ui/table'
 import { ApiError, apiFetch } from '@/lib/api'
 import type { components } from '@/lib/api-types'
+import { getCurrentUser } from '@/lib/session'
 import { cn } from '@/lib/utils'
 
 type Invoice = components['schemas']['InvoiceDetailsResponse']
@@ -73,7 +75,10 @@ export default async function InvoicePage({
   }
   const t = await getTranslations('detail')
   const format = await getFormatter()
-  const { invoice, changes, document } = await load(id)
+  const [{ invoice, changes, document }, user] = await Promise.all([
+    load(id),
+    getCurrentUser(),
+  ])
 
   const currency = invoice.currency ?? 'EUR'
   const money = (value?: number) =>
@@ -117,11 +122,14 @@ export default async function InvoicePage({
             {t('due', { date: day(invoice.dueDate) })}
           </p>
         </div>
-        <div className='text-right'>
-          <div className='text-xs text-subtle'>{t('amountDue')}</div>
-          <div className='font-mono text-3xl font-medium tracking-tight tabular-nums'>
-            {money(invoice.grossAmount)}
+        <div className='flex flex-col items-end gap-3'>
+          <div className='text-right'>
+            <div className='text-xs text-subtle'>{t('amountDue')}</div>
+            <div className='font-mono text-3xl font-medium tracking-tight tabular-nums'>
+              {money(invoice.grossAmount)}
+            </div>
           </div>
+          <InvoiceActions invoice={invoice} roles={user?.roles ?? []} />
         </div>
       </header>
 
