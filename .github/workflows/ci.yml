@@ -28,15 +28,18 @@ jobs:
           distribution: temurin
           java-version: '25'
           cache: maven
+          cache-dependency-path: api/pom.xml
 
       # The wrapper is committed from Windows without the executable bit.
       - name: Make Maven wrapper executable
+        working-directory: api
         run: chmod +x mvnw
 
       # Runs unit and integration tests. Testcontainers uses the Docker daemon
       # that is pre-installed on GitHub-hosted Ubuntu runners.
       # Also builds the jar that the Docker image is made from.
-      - name: Build and test
+      - name: Build and test the backend
+        working-directory: api
         run: ./mvnw -B verify
 
       # Everything below runs only for accepted code: a push to main or a version tag, never for a pull request.
@@ -69,7 +72,7 @@ jobs:
         if: github.event_name == 'push'
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ./api
           push: true
           tags: ${{ steps.meta_app.outputs.tags }}
           labels: ${{ steps.meta_app.outputs.labels }}

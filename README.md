@@ -38,7 +38,7 @@ a human look and which are broken — and why.
   accepted with an explicit, documented confirmation.
 - **Data protection**: IBANs, e-mails and phone numbers are masked before text is sent to the model.
 - **Measured AI quality**: an eval suite (real ZUGFeRD samples + hand-written traps) reports accuracy per field
-  and fails on confident mistakes in fields that decide payment ([evals](evals/README.md)).
+  and fails on confident mistakes in fields that decide payment ([evals](api/evals/README.md)).
 - **Observability**: metrics for processing time, model latency and confidence, invoice status, queue and dead
   letter queue size and outbox backlog, in Prometheus and a Grafana dashboard.
 - **Errors** in the standard RFC 9457 format (`application/problem+json`).
@@ -68,9 +68,20 @@ flowchart LR
     DB --> R[Read and review API]
 ```
 
-The application is a **modular monolith**: one code base, packages by feature (`ingestion`, `document`, `format`,
+The backend is a **modular monolith**: one code base, packages by feature (`ingestion`, `document`, `format`,
 `parsing`, `extraction`, `validation`, `invoice`, `review`, `supplier`, `outbox`, `security`, `storage`, `tenant`).
 It runs in two roles: the **api** and a **worker** for the untrusted, slow part (PDF parsing and the language model).
+
+The repository holds the whole product:
+
+| Folder        | What                                                           |
+|---------------|----------------------------------------------------------------|
+| `api/`        | Backend: Spring Boot application, tests, AI evals, KoSIT rules |
+| `web/`        | Web UI (Next.js), in progress                                  |
+| `infra/`      | Azure environment as Terraform code                            |
+| `keycloak/`   | Login server: realm with roles, demo companies and users       |
+| `monitoring/` | Prometheus and Grafana configuration                           |
+| `docs/`       | Architecture decisions (ADRs)                                  |
 
 ## Tech stack
 
@@ -100,12 +111,13 @@ git clone https://github.com/<your-user>/dewtally.git
 cd dewtally
 cp .env.example .env          # then put your OPENAI_API_KEY into .env (never commit it)
 docker compose up -d          # PostgreSQL, RabbitMQ, Keycloak (safe to run again)
+cd api
 ./mvnw spring-boot:run        # Windows: .\mvnw.cmd spring-boot:run
 ```
 
 This runs api and worker in one process. Liquibase creates the schema. Always start the containers with
 `docker compose up -d` first: Spring Boot only starts them itself when none of them is running yet.
-The XRechnung validator configuration is included in `kosit/xrechnung/`. Without an API key, structured e-invoices
+The XRechnung validator configuration is included in `api/kosit/xrechnung/`. Without an API key, structured e-invoices
 work; plain PDFs go to review.
 
 - RabbitMQ management UI: http://localhost:15672 (user and password `dewtally`).
@@ -135,7 +147,7 @@ BEN=$(login ben)       # approver
 CARLA=$(login carla)   # admin
 
 # Upload an invoice: 202 Accepted, processed in the background
-curl -F "file=@src/test/resources/invoices/xrechnung-ubl.xml" -H "$ANNA" http://localhost:8080/api/documents
+curl -F "file=@api/src/test/resources/invoices/xrechnung-ubl.xml" -H "$ANNA" http://localhost:8080/api/documents
 
 # Processing status of a document; invoiceId is set once it is processed
 curl -H "$ANNA" http://localhost:8080/api/documents/$DOCUMENT_ID
@@ -196,7 +208,7 @@ take down at most the worker: it exits on `OutOfMemoryError`, Docker restarts it
 message goes back to the queue. The API keeps working, and uploads wait in the queue until a worker is back.
 
 ```bash
-./mvnw package -DskipTests
+(cd api && ./mvnw package -DskipTests)
 docker compose --profile app up -d --build
 docker stats --no-stream        # the worker shows its 1 GiB limit
 ```
@@ -225,6 +237,7 @@ Keycloak as Azure Container Apps, PostgreSQL Flexible Server, Key Vault for all 
 ## Tests
 
 ```bash
+cd api
 ./mvnw verify
 ```
 
@@ -240,10 +253,11 @@ Tests that call the real model are skipped unless started with `-Dai=true`.
 AI evals call the real model, cost a little money and are not part of the normal build:
 
 ```bash
+cd api
 ./mvnw test -Dtest=ExtractionEval -Dai=true
 ```
 
-See [evals/README.md](evals/README.md) for the test set, the regression check and results.
+See [api/evals/README.md](api/evals/README.md) for the test set, the regression check and results.
 
 ## Design decisions
 
@@ -313,6 +327,6 @@ Details: [ROADMAP.md](ROADMAP.md)
 
 ## Licences
 
-The XRechnung validator configuration in `kosit/` is published by KoSIT under the Apache License 2.0.
-The sample invoices in `evals/zugferd/` come from the [ZUGFeRD corpus](https://github.com/ZUGFeRD/corpus),
+The XRechnung validator configuration in `api/kosit/` is published by KoSIT under the Apache License 2.0.
+The sample invoices in `api/evals/zugferd/` come from the [ZUGFeRD corpus](https://github.com/ZUGFeRD/corpus),
 Apache License 2.0.
