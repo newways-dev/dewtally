@@ -19,6 +19,8 @@ export default getRequestConfig(async () => {
   const locale = await resolveLocale()
   return {
     locale,
+    // dewtally serves German companies: times are shown in German time, on the server and in the browser alike
+    timeZone: 'Europe/Berlin',
     messages: (await import(`../../messages/${locale}.json`)).default,
   }
 })

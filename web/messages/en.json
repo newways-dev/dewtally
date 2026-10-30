@@ -52,7 +52,48 @@
     "subtitle": "Incoming invoices of your company",
     "upload": "Upload invoice",
     "amountDue": "Amount due",
-    "total": "Invoices in total"
+    "total": "Invoices in total",
+    "summary": "Summary",
+    "cards": {
+      "NEEDS_REVIEW": {
+        "label": "Needs review",
+        "hint": "waiting for a person"
+      },
+      "INVALID": { "label": "Invalid", "hint": "errors in the invoice" },
+      "VALID": { "label": "Valid", "hint": "ready to approve" },
+      "ACCEPTED": { "label": "Accepted", "hint": "approved for payment" }
+    },
+    "filter": "Filter by status",
+    "all": "All",
+    "tabs": {
+      "NEEDS_REVIEW": "Needs review",
+      "INVALID": "Invalid",
+      "VALID": "Valid",
+      "ACCEPTED": "Accepted",
+      "REJECTED": "Rejected"
+    },
+    "search": "Search supplier or invoice number",
+    "columns": {
+      "supplier": "Supplier",
+      "number": "Invoice no.",
+      "issued": "Issued",
+      "due": "Due",
+      "amount": "Amount",
+      "source": "Source",
+      "status": "Status"
+    },
+    "source": {
+      "STRUCTURED": "E-invoice",
+      "LLM": "PDF · AI",
+      "MANUAL": "Manual"
+    },
+    "unknownSupplier": "Unknown supplier",
+    "findings": "{count, plural, one {# finding} other {# findings}}",
+    "empty": "No invoices match this filter.",
+    "pagination": "Pages",
+    "pageOf": "Page {page} of {pages}",
+    "previous": "Previous page",
+    "next": "Next page"
   },
   "upload": {
     "title": "Upload invoices",
@@ -69,10 +110,12 @@
     "reject": "Reject"
   },
   "status": {
+    "RECEIVED": "Received",
     "NEEDS_REVIEW": "Needs review",
     "INVALID": "Invalid",
     "VALID": "Valid",
     "ACCEPTED": "Accepted",
-    "REJECTED": "Rejected"
+    "REJECTED": "Rejected",
+    "EXPORTED": "Exported"
   }
 }
