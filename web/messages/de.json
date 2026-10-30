@@ -7,13 +7,52 @@
     "main": "Hauptnavigation",
     "invoices": "Rechnungen",
     "upload": "Hochladen",
-    "suppliers": "Lieferanten"
+    "suppliers": "Lieferanten",
+    "signOut": "Abmelden"
+  },
+  "roles": {
+    "clerk": "Sachbearbeitung",
+    "approver": "Freigabe",
+    "admin": "Admin",
+    "none": "Keine Rolle"
+  },
+  "login": {
+    "headline": "Eingangsrechnungen geprüft, bevor jemand bezahlt.",
+    "points": {
+      "rules": {
+        "title": "E-Rechnungen nach offiziellen Regeln",
+        "text": "XRechnung und ZUGFeRD werden mit dem KoSIT-Validator geprüft."
+      },
+      "ai": {
+        "title": "Die KI liest, Menschen entscheiden",
+        "text": "Einfache PDFs liest die KI; alles Unsichere geht an eine Person."
+      },
+      "fourEyes": {
+        "title": "Bankdaten mit vier Augen",
+        "text": "Eine neue oder geänderte IBAN gilt erst, wenn eine zweite Person sie bestätigt."
+      }
+    },
+    "footer": "Portfolio-Projekt · Rechnungsdaten bleiben in Deutschland.",
+    "title": "Anmelden",
+    "text": "Mit Ihrem Firmenkonto.",
+    "continue": "Weiter zur Firmenanmeldung",
+    "redirectNote": "Sie werden zur Anmeldeseite (Keycloak) weitergeleitet.",
+    "failed": "Die Anmeldung hat nicht geklappt. Bitte erneut versuchen.",
+    "demoTitle": "Demo-Zugänge",
+    "demoHint": "Das Passwort ist der Benutzername.",
+    "demoRoles": {
+      "clerkDemo": "Sachbearbeitung · Demo GmbH",
+      "approverDemo": "Freigabe · Demo GmbH",
+      "adminDemo": "Admin · Demo GmbH",
+      "clerkOther": "Sachbearbeitung · Other AG"
+    }
   },
   "invoices": {
     "title": "Rechnungen",
     "subtitle": "Eingangsrechnungen Ihres Unternehmens",
     "upload": "Rechnung hochladen",
-    "amountDue": "Zahlbetrag"
+    "amountDue": "Zahlbetrag",
+    "total": "Rechnungen insgesamt"
   },
   "upload": {
     "title": "Rechnungen hochladen",

@@ -4,6 +4,7 @@ import { Building2, FileText, Upload } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
+import type { ReactNode } from 'react'
 
 import { Logo } from '@/components/logo'
 import { cn } from '@/lib/utils'
@@ -14,8 +15,9 @@ const items = [
   { href: '/suppliers', key: 'suppliers', icon: Building2 },
 ] as const
 
-// Main navigation. A client component only because it highlights the current page.
-export function AppSidebar() {
+// Main navigation. A client component only because it highlights the current page;
+// the user block at the bottom is rendered on the server and passed in.
+export function AppSidebar({ footer }: { footer?: ReactNode }) {
   const t = useTranslations('nav')
   const pathname = usePathname()
 
@@ -50,6 +52,8 @@ export function AppSidebar() {
           )
         })}
       </ul>
+
+      {footer}
     </nav>
   )
 }
