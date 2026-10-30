@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/button'
+import { ThemeToggle } from '@/components/theme-toggle'
 
-// Temporary page to check colours and fonts in both themes; replaced by the app shell in step 2.5.
+// Temporary page to check colours, fonts and the theme switch; replaced by the app shell in step 2.5.
 const statuses = [
   {
     label: 'Needs review',
@@ -21,13 +22,18 @@ const statuses = [
   },
 ]
 
-function Preview() {
+export default function Home() {
   return (
-    <div className='flex flex-1 flex-col gap-6 bg-background p-8 text-foreground'>
-      <div>
-        <h1 className='text-2xl font-semibold tracking-tight'>Invoices</h1>
-        <p className='text-muted-foreground'>Incoming invoices of Demo GmbH</p>
-        <p className='text-sm text-subtle'>Subtle text for hints</p>
+    <main className='flex flex-1 flex-col gap-6 p-8'>
+      <div className='flex items-start justify-between gap-4'>
+        <div>
+          <h1 className='text-2xl font-semibold tracking-tight'>Invoices</h1>
+          <p className='text-muted-foreground'>
+            Incoming invoices of Demo GmbH
+          </p>
+          <p className='text-sm text-subtle'>Subtle text for hints</p>
+        </div>
+        <ThemeToggle label='Switch light or dark theme' />
       </div>
 
       <div className='flex flex-wrap gap-2'>
@@ -52,7 +58,7 @@ function Preview() {
         ))}
       </div>
 
-      <div className='rounded-xl border bg-card p-4'>
+      <div className='w-fit rounded-xl border bg-card p-4'>
         <div className='text-sm text-muted-foreground'>Amount due</div>
         <div className='font-mono text-3xl font-medium tracking-tight tabular-nums'>
           4.284,00 €
@@ -60,21 +66,6 @@ function Preview() {
         <div className='font-mono text-sm text-subtle'>
           DE02 1203 0000 0000 2020 51
         </div>
-      </div>
-
-      <div className='w-fit rounded-lg bg-brand-soft px-3 py-2 font-medium text-brand-soft-foreground'>
-        Active menu item
-      </div>
-    </div>
-  )
-}
-
-export default function Home() {
-  return (
-    <main className='grid flex-1 md:grid-cols-2'>
-      <Preview />
-      <div className='dark flex'>
-        <Preview />
       </div>
     </main>
   )
