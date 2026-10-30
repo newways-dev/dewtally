@@ -5,9 +5,11 @@ import { getTranslations } from 'next-intl/server'
 import { PageHeader } from '@/components/page-header'
 import { buttonVariants } from '@/components/ui/button'
 import { apiFetch } from '@/lib/api'
+import type { components } from '@/lib/api-types'
 import { cn } from '@/lib/utils'
 
-type InvoiceCounts = { byStatus: Record<string, number>; total: number }
+// Generated from the API description: a renamed field in the backend breaks this build, not the screen
+type InvoiceCounts = components['schemas']['InvoiceCountsResponse']
 
 export default async function InvoicesPage() {
   const t = await getTranslations('invoices')
