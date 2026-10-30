@@ -3,10 +3,25 @@
     "language": "Language",
     "themeToggle": "Switch light or dark theme"
   },
+  "nav": {
+    "main": "Main navigation",
+    "invoices": "Invoices",
+    "upload": "Upload",
+    "suppliers": "Suppliers"
+  },
   "invoices": {
     "title": "Invoices",
-    "subtitle": "Incoming invoices of Demo GmbH",
+    "subtitle": "Incoming invoices of your company",
+    "upload": "Upload invoice",
     "amountDue": "Amount due"
+  },
+  "upload": {
+    "title": "Upload invoices",
+    "subtitle": "E-invoices are read directly; plain PDFs are read by AI and checked by the same rules."
+  },
+  "suppliers": {
+    "title": "Suppliers",
+    "subtitle": "Who your company buys from, and which bank accounts are trusted"
   },
   "actions": {
     "approve": "Approve for payment",

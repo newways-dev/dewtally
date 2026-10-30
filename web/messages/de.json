@@ -3,10 +3,25 @@
     "language": "Sprache",
     "themeToggle": "Helles oder dunkles Design"
   },
+  "nav": {
+    "main": "Hauptnavigation",
+    "invoices": "Rechnungen",
+    "upload": "Hochladen",
+    "suppliers": "Lieferanten"
+  },
   "invoices": {
     "title": "Rechnungen",
-    "subtitle": "Eingangsrechnungen der Demo GmbH",
+    "subtitle": "Eingangsrechnungen Ihres Unternehmens",
+    "upload": "Rechnung hochladen",
     "amountDue": "Zahlbetrag"
+  },
+  "upload": {
+    "title": "Rechnungen hochladen",
+    "subtitle": "E-Rechnungen werden direkt gelesen; einfache PDFs liest die KI, geprüft wird nach denselben Regeln."
+  },
+  "suppliers": {
+    "title": "Lieferanten",
+    "subtitle": "Bei wem Ihr Unternehmen einkauft und welchen Bankverbindungen es vertraut"
   },
   "actions": {
     "approve": "Zur Zahlung freigeben",
