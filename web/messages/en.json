@@ -99,8 +99,42 @@
     "next": "Next page"
   },
   "upload": {
-    "title": "Upload invoices",
-    "subtitle": "E-invoices are read directly; plain PDFs are read by AI and checked by the same rules."
+    "title": "Upload",
+    "description": "XRechnung, ZUGFeRD or a plain PDF invoice. The format is detected automatically.",
+    "dropTitle": "Drop invoices here",
+    "dropHint": "PDF or XML, several files at once.",
+    "choose": "Choose files",
+    "readOnly": "Uploading is for clerks",
+    "readOnlyText": "Your role can see uploads, but not add new ones.",
+    "recent": "Recent uploads",
+    "processing": "Processing…",
+    "empty": "No uploads yet",
+    "emptyText": "Uploaded files appear here with their processing status.",
+    "openInvoice": "Open invoice",
+    "columns": {
+      "file": "File",
+      "format": "Format",
+      "uploaded": "Uploaded",
+      "status": "Status",
+      "invoice": "Invoice"
+    },
+    "status": {
+      "RECEIVED": "Processing",
+      "PROCESSED": "Done",
+      "FAILED": "Failed, upload again"
+    },
+    "state": {
+      "uploading": "Uploading…",
+      "created": "Uploaded and checked",
+      "queued": "Uploaded, processing in the background",
+      "duplicate": "Already uploaded before"
+    },
+    "errors": {
+      "unsupported": "Only PDF and XML files",
+      "tooLarge": "File is too large",
+      "forbidden": "Your role does not allow uploading",
+      "failed": "Upload failed, please try again"
+    }
   },
   "suppliers": {
     "title": "Suppliers",

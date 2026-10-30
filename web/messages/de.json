@@ -99,8 +99,42 @@
     "next": "Nächste Seite"
   },
   "upload": {
-    "title": "Rechnungen hochladen",
-    "subtitle": "E-Rechnungen werden direkt gelesen; einfache PDFs liest die KI, geprüft wird nach denselben Regeln."
+    "title": "Hochladen",
+    "description": "XRechnung, ZUGFeRD oder eine normale PDF-Rechnung. Das Format wird automatisch erkannt.",
+    "dropTitle": "Rechnungen hier ablegen",
+    "dropHint": "PDF oder XML, auch mehrere Dateien gleichzeitig.",
+    "choose": "Dateien auswählen",
+    "readOnly": "Hochladen ist der Sachbearbeitung vorbehalten",
+    "readOnlyText": "Ihre Rolle kann Uploads sehen, aber keine neuen hinzufügen.",
+    "recent": "Letzte Uploads",
+    "processing": "Wird verarbeitet…",
+    "empty": "Noch keine Uploads",
+    "emptyText": "Hochgeladene Dateien erscheinen hier mit ihrem Verarbeitungsstatus.",
+    "openInvoice": "Rechnung öffnen",
+    "columns": {
+      "file": "Datei",
+      "format": "Format",
+      "uploaded": "Hochgeladen",
+      "status": "Status",
+      "invoice": "Rechnung"
+    },
+    "status": {
+      "RECEIVED": "In Verarbeitung",
+      "PROCESSED": "Fertig",
+      "FAILED": "Fehlgeschlagen, erneut hochladen"
+    },
+    "state": {
+      "uploading": "Wird hochgeladen…",
+      "created": "Hochgeladen und geprüft",
+      "queued": "Hochgeladen, wird im Hintergrund verarbeitet",
+      "duplicate": "Wurde bereits hochgeladen"
+    },
+    "errors": {
+      "unsupported": "Nur PDF- und XML-Dateien",
+      "tooLarge": "Datei ist zu groß",
+      "forbidden": "Ihre Rolle erlaubt kein Hochladen",
+      "failed": "Hochladen fehlgeschlagen, bitte erneut versuchen"
+    }
   },
   "suppliers": {
     "title": "Lieferanten",
