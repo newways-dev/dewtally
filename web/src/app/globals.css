@@ -1,0 +1,177 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  /* Geist for text, Geist Mono for amounts, invoice numbers, IBANs and VAT IDs */
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-geist-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+
+  /* dewtally roles that shadcn does not have */
+  --color-subtle: var(--subtle);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-soft-foreground: var(--brand-soft-foreground);
+  --color-status-review: var(--status-review);
+  --color-status-review-foreground: var(--status-review-foreground);
+  --color-status-invalid: var(--status-invalid);
+  --color-status-invalid-foreground: var(--status-invalid-foreground);
+  --color-status-valid: var(--status-valid);
+  --color-status-valid-foreground: var(--status-valid-foreground);
+  --color-status-accepted: var(--status-accepted);
+  --color-status-accepted-foreground: var(--status-accepted-foreground);
+  --color-status-rejected: var(--status-rejected);
+  --color-status-rejected-foreground: var(--status-rejected-foreground);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* Light theme: calm neutral greys, one indigo accent. Text colours pass WCAG AA (4.5:1) on their backgrounds. */
+:root {
+  --background: #f7f7f8;
+  --foreground: #18181b;
+  --card: #ffffff;
+  --card-foreground: #18181b;
+  --popover: #ffffff;
+  --popover-foreground: #18181b;
+  --primary: #4338ca;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f1f3;
+  --secondary-foreground: #18181b;
+  --muted: #f1f1f3;
+  --muted-foreground: #52525b;
+  --accent: #f4f4f6;
+  --accent-foreground: #18181b;
+  --destructive: #b91c1c;
+  --border: #e4e4e7;
+  --input: #e4e4e7;
+  --ring: #4338ca;
+  --chart-1: #4338ca;
+  --chart-2: #0e7490;
+  --chart-3: #b45309;
+  --chart-4: #15803d;
+  --chart-5: #71717a;
+  --radius: 0.625rem;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #18181b;
+  --sidebar-primary: #4338ca;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #eeeffe;
+  --sidebar-accent-foreground: #3730a3;
+  --sidebar-border: #e4e4e7;
+  --sidebar-ring: #4338ca;
+
+  --subtle: #6b6b74;
+  --brand-soft: #eeeffe;
+  --brand-soft-foreground: #3730a3;
+  --status-review: #fef3c7;
+  --status-review-foreground: #92400e;
+  --status-invalid: #fee2e2;
+  --status-invalid-foreground: #991b1b;
+  --status-valid: #dbeafe;
+  --status-valid-foreground: #1e40af;
+  --status-accepted: #d1fae5;
+  --status-accepted-foreground: #065f46;
+  --status-rejected: #f1f1f3;
+  --status-rejected-foreground: #3f3f46;
+}
+
+/* Dark theme: its own palette, not an inversion of the light one */
+.dark {
+  --background: #0c0c0e;
+  --foreground: #f4f4f5;
+  --card: #141417;
+  --card-foreground: #f4f4f5;
+  --popover: #141417;
+  --popover-foreground: #f4f4f5;
+  --primary: #8b93ff;
+  --primary-foreground: #0c0c14;
+  --secondary: #1b1b1f;
+  --secondary-foreground: #f4f4f5;
+  --muted: #1b1b1f;
+  --muted-foreground: #b4b4bc;
+  --accent: #1c1c21;
+  --accent-foreground: #f4f4f5;
+  --destructive: #f87171;
+  --border: #2a2a30;
+  --input: #2a2a30;
+  --ring: #8b93ff;
+  --chart-1: #8b93ff;
+  --chart-2: #67e8f9;
+  --chart-3: #fcd34d;
+  --chart-4: #6ee7b7;
+  --chart-5: #a1a1aa;
+  --sidebar: #141417;
+  --sidebar-foreground: #f4f4f5;
+  --sidebar-primary: #8b93ff;
+  --sidebar-primary-foreground: #0c0c14;
+  --sidebar-accent: #1f2142;
+  --sidebar-accent-foreground: #b9beff;
+  --sidebar-border: #2a2a30;
+  --sidebar-ring: #8b93ff;
+
+  --subtle: #9a9aa4;
+  --brand-soft: #1f2142;
+  --brand-soft-foreground: #b9beff;
+  --status-review: #3a2c0c;
+  --status-review-foreground: #fcd34d;
+  --status-invalid: #3d1515;
+  --status-invalid-foreground: #fca5a5;
+  --status-valid: #11264a;
+  --status-valid-foreground: #93c5fd;
+  --status-accepted: #0c3327;
+  --status-accepted-foreground: #6ee7b7;
+  --status-rejected: #26262b;
+  --status-rejected-foreground: #d4d4d8;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}

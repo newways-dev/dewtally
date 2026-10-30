@@ -1,0 +1,39 @@
+{
+  "common": {
+    "language": "Language",
+    "themeToggle": "Switch light or dark theme"
+  },
+  "nav": {
+    "main": "Main navigation",
+    "invoices": "Invoices",
+    "upload": "Upload",
+    "suppliers": "Suppliers"
+  },
+  "invoices": {
+    "title": "Invoices",
+    "subtitle": "Incoming invoices of your company",
+    "upload": "Upload invoice",
+    "amountDue": "Amount due"
+  },
+  "upload": {
+    "title": "Upload invoices",
+    "subtitle": "E-invoices are read directly; plain PDFs are read by AI and checked by the same rules."
+  },
+  "suppliers": {
+    "title": "Suppliers",
+    "subtitle": "Who your company buys from, and which bank accounts are trusted"
+  },
+  "actions": {
+    "approve": "Approve for payment",
+    "correct": "Correct data",
+    "download": "Download",
+    "reject": "Reject"
+  },
+  "status": {
+    "NEEDS_REVIEW": "Needs review",
+    "INVALID": "Invalid",
+    "VALID": "Valid",
+    "ACCEPTED": "Accepted",
+    "REJECTED": "Rejected"
+  }
+}
