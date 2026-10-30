@@ -1,6 +1,6 @@
 HELP.md
 target/
-.mvn/wrapper/maven-wrapper.jar
+**/.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
 
@@ -37,3 +37,8 @@ build/
 
 ### Local document storage ###
 data/
+
+### Exports for chat help (never commit) ###
+*-files.txt
+web-api.txt
+rls-tests.txt

@@ -1,5 +1,5 @@
-# Development: ".\mvnw.cmd spring-boot:run" starts only postgres and rabbitmq (services without a profile).
-# Full stack in containers: ".\mvnw.cmd package -DskipTests", then "docker compose --profile app up -d --build".
+# Development: "docker compose up -d", then in api/: ".\mvnw.cmd spring-boot:run" (services without a profile).
+# Full stack in containers: in api/ ".\mvnw.cmd package -DskipTests", then here "docker compose --profile app up -d --build".
 
 # Settings shared by api and worker
 x-app: &app
@@ -59,7 +59,7 @@ services:
   api:
     <<: *app
     profiles: [ app ]
-    build: .
+    build: ./api
     environment:
       <<: *app-env
       SPRING_PROFILES_ACTIVE: api
