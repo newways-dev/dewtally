@@ -16,6 +16,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { PageHeader } from '@/components/page-header'
 import {
   Table,
   TableBody,
@@ -95,6 +96,11 @@ export default async function InvoicePage({
 
   return (
     <>
+      <PageHeader
+        title={invoice.supplierName ?? t('unknownSupplier')}
+        subtitle={`${invoice.invoiceNumber ?? '—'} · ${t('issued', { date: day(invoice.issueDate) })} · ${t('due', { date: day(invoice.dueDate) })}`}
+      />
+
       <Link
         href='/invoices'
         className={cn(
@@ -105,6 +111,19 @@ export default async function InvoicePage({
         <ArrowLeft aria-hidden='true' />
         {t('back')}
       </Link>
+
+      <div className='flex flex-wrap items-end justify-between gap-4'>
+        <div className='flex flex-col gap-1'>
+          <div className='text-xs text-subtle'>{t('amountDue')}</div>
+          <div className='flex flex-wrap items-center gap-3'>
+            <span className='font-mono text-3xl font-medium tracking-tight tabular-nums'>
+              {money(invoice.grossAmount)}
+            </span>
+            {invoice.status && <StatusBadge status={invoice.status} />}
+          </div>
+        </div>
+        <InvoiceActions invoice={invoice} roles={user?.roles ?? []} />
+      </div>
 
       <header className='flex flex-wrap items-end justify-between gap-4'>
         <div className='flex min-w-0 flex-col gap-1.5'>
