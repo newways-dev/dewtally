@@ -2,6 +2,8 @@ import type { NextConfig } from 'next'
 import createNextIntlPlugin from 'next-intl/plugin'
 
 const nextConfig: NextConfig = {
+  // The build contains its own small server with only the files it needs: a small Docker image
+  output: 'standalone',
   // cacheComponents is off on purpose: every page of dewtally depends on the logged-in user and their company,
   // and the language comes from a cookie in the root layout, so there is nothing to prerender.
   turbopack: {
