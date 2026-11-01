@@ -1,10 +1,17 @@
-# Development: "docker compose up -d", then in api/: ".\mvnw.cmd spring-boot:run" (services without a profile).
-# Full stack in containers: in api/ ".\mvnw.cmd package -DskipTests", then here "docker compose --profile app up -d --build".
+# Development (every day): infrastructure only. It starts by itself with Docker after a reboot.
+#   docker compose up -d                  -> Postgres, RabbitMQ, Keycloak
+#   api: IntelliJ (port 8080), web: "pnpm dev" in web/ (port 3000)
+# Full stack in containers (to try it like production, then stop it again):
+#   in api/ ".\mvnw.cmd package -DskipTests", then here "docker compose --profile app up -d --build"
+#   stop: "docker compose --profile app stop api worker prometheus grafana"
+# Never "docker compose down" without thinking: it deletes the Postgres container and with it the local data.
 
 # Settings shared by api and worker
 x-app: &app
   image: dewtally:local
-  restart: unless-stopped
+  # Not restarted automatically: these containers only run when started on purpose,
+  # otherwise they would come back after every reboot and clash with the api in IntelliJ
+  restart: "no"
   depends_on: [ postgres, rabbitmq ]
   volumes:
     - documents:/app/data
@@ -21,6 +28,8 @@ x-app: &app
 services:
   postgres:
     image: postgres:17
+    # Infrastructure comes back by itself after a reboot (unless it was stopped by hand)
+    restart: unless-stopped
     environment:
       POSTGRES_DB: dewtally
       POSTGRES_USER: dewtally
@@ -31,6 +40,7 @@ services:
   rabbitmq:
     # "management" adds a web UI on http://localhost:15672 to watch the queues
     image: rabbitmq:4-management
+    restart: unless-stopped
     environment:
       RABBITMQ_DEFAULT_USER: dewtally
       RABBITMQ_DEFAULT_PASS: dewtally
@@ -41,6 +51,7 @@ services:
   keycloak:
     # Login server (OpenID Connect). Admin console: http://localhost:8180 (admin / admin, local only)
     image: quay.io/keycloak/keycloak:26.3
+    restart: unless-stopped
     command: [ "start-dev", "--import-realm" ]
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
