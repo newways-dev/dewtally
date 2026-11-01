@@ -5,6 +5,9 @@ import com.kate.dewtally.document.InvoiceDocumentRepository;
 import com.kate.dewtally.invoice.InvoiceService;
 import com.kate.dewtally.invoice.PageResponse;
 import com.kate.dewtally.storage.DocumentStorage;
+import com.kate.dewtally.storage.StorageException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -24,6 +27,8 @@ import java.util.UUID;
 public class DocumentQueryService {
 
     static final int MAX_PAGE_SIZE = 100;
+
+    private static final Logger log = LoggerFactory.getLogger(DocumentQueryService.class);
 
     private final InvoiceDocumentRepository documents;
     private final DocumentStorage storage;
@@ -66,7 +71,15 @@ public class DocumentQueryService {
     Content content(UUID tenantId, UUID documentId) {
         InvoiceDocument document = documents.findByIdAndTenantId(documentId, tenantId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found"));
-        byte[] bytes = storage.load(document.getStorageKey());
+        byte[] bytes;
+        try {
+            bytes = storage.load(document.getStorageKey());
+        } catch (StorageException e) {
+            // The record exists but the file is gone: data loss someone has to look at, not a client error.
+            // The client gets a plain 404 without the storage path.
+            log.error("Original file of document {} is missing in storage", documentId, e);
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "The original file is not available");
+        }
         return new Content(document.getFileName(), mediaType(document), bytes);
     }
 

@@ -16,12 +16,27 @@ import {
   EmptyHeader,
   EmptyMedia,
 } from '@/components/ui/empty'
-import { apiRequest } from '@/lib/api'
+import { ApiError, apiRequest } from '@/lib/api'
 import type { components } from '@/lib/api-types'
 
 type Document = components['schemas']['DocumentResponse']
 
 const MAX_XML_CHARS = 200_000
+
+// Loads the XML text; a missing original file must not take down the whole invoice page.
+async function loadXml(id: string): Promise<string | null> {
+  try {
+    const text = await (await apiRequest(`/api/documents/${id}/content`)).text()
+    return text.length > MAX_XML_CHARS
+      ? `${text.slice(0, MAX_XML_CHARS)}\n…`
+      : text
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return null
+    }
+    throw error
+  }
+}
 
 // The original as the supplier sent it: PDFs drawn by pdf.js, XML as plain text (never opened as a page).
 export async function InvoiceDocument({ document }: { document: Document }) {
@@ -31,14 +46,8 @@ export async function InvoiceDocument({ document }: { document: Document }) {
   const isXml = format === 'UBL' || format === 'CII'
   const fileUrl = `/files/${document.id}`
 
-  let xml: string | null = null
-  if (isXml && document.id) {
-    const text = await (
-      await apiRequest(`/api/documents/${document.id}/content`)
-    ).text()
-    xml =
-      text.length > MAX_XML_CHARS ? `${text.slice(0, MAX_XML_CHARS)}\n…` : text
-  }
+  const xml = isXml && document.id ? await loadXml(document.id) : null
+  const missing = isXml && xml === null
 
   return (
     <Card className='gap-0 py-0 shadow-none'>
@@ -47,16 +56,18 @@ export async function InvoiceDocument({ document }: { document: Document }) {
           <FileText className='size-4 shrink-0' aria-hidden='true' />
           <span className='truncate font-mono'>{document.fileName}</span>
         </CardTitle>
-        <CardAction>
-          <a
-            href={fileUrl}
-            download
-            className={buttonVariants({ variant: 'ghost', size: 'sm' })}
-          >
-            <Download aria-hidden='true' />
-            {t('download')}
-          </a>
-        </CardAction>
+        {!missing && (
+          <CardAction>
+            <a
+              href={fileUrl}
+              download
+              className={buttonVariants({ variant: 'ghost', size: 'sm' })}
+            >
+              <Download aria-hidden='true' />
+              {t('download')}
+            </a>
+          </CardAction>
+        )}
       </CardHeader>
       <CardContent className='bg-muted p-3'>
         {isPdf && <PdfPreview url={fileUrl} />}
@@ -71,7 +82,9 @@ export async function InvoiceDocument({ document }: { document: Document }) {
               <EmptyMedia variant='icon'>
                 <FileX aria-hidden='true' />
               </EmptyMedia>
-              <EmptyDescription>{t('noPreview')}</EmptyDescription>
+              <EmptyDescription>
+                {missing ? t('fileMissing') : t('noPreview')}
+              </EmptyDescription>
             </EmptyHeader>
           </Empty>
         )}

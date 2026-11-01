@@ -10,13 +10,13 @@ import { notFound } from 'next/navigation'
 import { getFormatter, getTranslations } from 'next-intl/server'
 
 import { InvoiceDocument } from '@/components/invoice-document'
+import { PageHeader } from '@/components/page-header'
 import { InvoiceActions } from '@/components/review/invoice-actions'
 import { StatusBadge } from '@/components/status-badge'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { PageHeader } from '@/components/page-header'
 import {
   Table,
   TableBody,
@@ -76,10 +76,30 @@ export default async function InvoicePage({
   }
   const t = await getTranslations('detail')
   const format = await getFormatter()
+  const tr = await getTranslations('review')
+  const tf = await getTranslations('review.fields')
   const [{ invoice, changes, document }, user] = await Promise.all([
     load(id),
     getCurrentUser(),
   ])
+
+  // "netAmount" → "Net total", "lines[2].quantity" → "Line 2 · Quantity"; unknown names stay as they are
+  const known = (name: string) =>
+    tf.has(name as never) ? tf(name as never) : name
+  const fieldLabel = (field?: string) => {
+    if (!field) {
+      return ''
+    }
+    const line = /^lines\[(\d+)\](?:\.(\w+))?$/.exec(field)
+    if (!line) {
+      return known(field)
+    }
+    const [, number, part] = line
+    const lineLabel = tr('line', { number: Number(number) })
+    return part
+      ? `${lineLabel} · ${known(part === 'netAmount' ? 'lineNet' : part)}`
+      : lineLabel
+  }
 
   const currency = invoice.currency ?? 'EUR'
   const money = (value?: number) =>
@@ -124,33 +144,6 @@ export default async function InvoicePage({
         </div>
         <InvoiceActions invoice={invoice} roles={user?.roles ?? []} />
       </div>
-
-      <header className='flex flex-wrap items-end justify-between gap-4'>
-        <div className='flex min-w-0 flex-col gap-1.5'>
-          <div className='flex flex-wrap items-center gap-2.5'>
-            <h1 className='text-2xl font-semibold tracking-tight'>
-              {invoice.supplierName ?? t('unknownSupplier')}
-            </h1>
-            {invoice.status && <StatusBadge status={invoice.status} />}
-          </div>
-          <p className='text-muted-foreground'>
-            <span className='font-mono'>{invoice.invoiceNumber ?? '—'}</span>
-            {' · '}
-            {t('issued', { date: day(invoice.issueDate) })}
-            {' · '}
-            {t('due', { date: day(invoice.dueDate) })}
-          </p>
-        </div>
-        <div className='flex flex-col items-end gap-3'>
-          <div className='text-right'>
-            <div className='text-xs text-subtle'>{t('amountDue')}</div>
-            <div className='font-mono text-3xl font-medium tracking-tight tabular-nums'>
-              {money(invoice.grossAmount)}
-            </div>
-          </div>
-          <InvoiceActions invoice={invoice} roles={user?.roles ?? []} />
-        </div>
-      </header>
 
       <div className='flex flex-wrap items-start gap-5'>
         <section
@@ -314,7 +307,7 @@ export default async function InvoicePage({
                       <span className='min-w-0'>
                         {t(`changes.${change.changeType ?? 'CORRECTION'}`, {
                           who: change.changedBy ?? '?',
-                          field: change.field ?? '',
+                          field: fieldLabel(change.field),
                         })}
                         {change.changeType === 'CORRECTION' && (
                           <span className='block font-mono text-xs text-subtle'>
