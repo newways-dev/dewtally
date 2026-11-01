@@ -1,0 +1,19 @@
+# Secrets never go into an image: settings are passed when the container starts
+.env*
+
+# Installed and built inside the image
+node_modules
+.next
+
+# Tests and their output
+e2e
+test-results
+playwright-report
+blob-report
+playwright.config.ts
+
+# Not needed in the image
+Dockerfile
+.dockerignore
+.git
+*.md
