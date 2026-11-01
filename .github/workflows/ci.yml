@@ -126,6 +126,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # PageProps, LayoutProps and RouteContext are generated from the app's routes into .next/types;
+      # locally "pnpm dev" creates them, a fresh checkout in CI does not have them yet
+      - name: Generate route types
+        run: pnpm exec next typegen
+
       - name: Type check
         run: pnpm exec tsc --noEmit
 
