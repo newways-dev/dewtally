@@ -204,6 +204,7 @@
     "original": "Original document",
     "download": "Download",
     "noPreview": "This file cannot be shown here.",
+    "fileMissing": "The original file is not available. Please contact support.",
     "pageCount": "{count, plural, one {# page} other {# pages}}",
     "zoomIn": "Zoom in",
     "zoomOut": "Zoom out",
@@ -297,7 +298,8 @@
       "unitCode": "Unit",
       "unitPrice": "Unit price",
       "lineNet": "Net",
-      "taxRate": "VAT %"
+      "taxRate": "VAT %",
+      "extractionMethod": "Data source"
     },
     "errors": {
       "forbidden": "Your role does not allow this action.",

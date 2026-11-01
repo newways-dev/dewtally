@@ -204,6 +204,7 @@
     "original": "Originaldokument",
     "download": "Herunterladen",
     "noPreview": "Diese Datei kann hier nicht angezeigt werden.",
+    "fileMissing": "Die Originaldatei ist nicht verfügbar. Bitte wenden Sie sich an den Support.",
     "pageCount": "{count, plural, one {# Seite} other {# Seiten}}",
     "zoomIn": "Vergrößern",
     "zoomOut": "Verkleinern",
@@ -297,7 +298,8 @@
       "unitCode": "Einheit",
       "unitPrice": "Einzelpreis",
       "lineNet": "Netto",
-      "taxRate": "USt. %"
+      "taxRate": "USt. %",
+      "extractionMethod": "Datenquelle"
     },
     "errors": {
       "forbidden": "Ihre Rolle erlaubt diese Aktion nicht.",
