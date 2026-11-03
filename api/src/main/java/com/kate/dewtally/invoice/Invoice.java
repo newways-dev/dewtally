@@ -6,6 +6,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * An invoice as it was issued (a snapshot, not a link to supplier master data).
@@ -20,11 +21,19 @@ public class Invoice {
             InvoiceStatus.VALID, InvoiceStatus.INVALID, InvoiceStatus.NEEDS_REVIEW);
     // Findings so dangerous that accepting needs an explicit confirmation, not just a click.
     private static final Set<String> HIGH_RISK_RULES = Set.of("DT-IBAN-CHANGED");
+    // Fields whose change makes the document's VAT breakdown outdated
+    private static final Set<String> AMOUNT_FIELDS = Set.of(
+            "netAmount", "taxAmount", "grossAmount", "allowanceTotal", "chargeTotal");
     @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("lineNo ASC")
     private final List<InvoiceLine> lines = new ArrayList<>();
     @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true)
     private final List<ValidationIssue> issues = new ArrayList<>();
+    // VAT per category and rate as stated in the invoice (BG-23); kept in the order of the document.
+    @ElementCollection
+    @CollectionTable(name = "invoice_vat_breakdown", joinColumns = @JoinColumn(name = "invoice_id"))
+    @OrderColumn(name = "seq_no")
+    private final List<VatSubtotal> vatBreakdown = new ArrayList<>();
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
@@ -112,6 +121,14 @@ public class Invoice {
         return value instanceof BigDecimal amount ? amount.toPlainString() : value.toString();
     }
 
+    // "S 19: 1200.00 / 228.00; S 7: 314.86 / 22.04" for the audit trail
+    private static String describe(List<VatSubtotal> breakdown) {
+        return breakdown.stream()
+                .map(row -> "%s %s: %s / %s".formatted(row.category(), format(row.rate()),
+                        format(row.taxableAmount()), format(row.taxAmount())))
+                .collect(Collectors.joining("; "));
+    }
+
     public void addLine(InvoiceLine line) {
         line.attachTo(this);
         lines.add(line);
@@ -119,6 +136,15 @@ public class Invoice {
 
     public void addIssue(Severity severity, String ruleId, String message) {
         issues.add(new ValidationIssue(this, severity, ruleId, message));
+    }
+
+    /**
+     * The VAT breakdown as read from the document. Replaced as a whole: it describes the document,
+     * it is not edited row by row.
+     */
+    public void recordVatBreakdown(List<VatSubtotal> breakdown) {
+        vatBreakdown.clear();
+        vatBreakdown.addAll(breakdown);
     }
 
     // Package-private: set by InvoiceService when the invoice is created from a model's answer.
@@ -154,6 +180,8 @@ public class Invoice {
      * A person replaces the invoice data. Returns every value that actually changed, for the audit trail.
      * If anything changed, the data counts as entered by a person (MANUAL), old issues are removed
      * and the invoice is back in RECEIVED, ready to be validated again.
+     * If amounts or lines changed, the VAT breakdown of the document no longer describes the data the person
+     * confirmed, and the form cannot change it: it is removed, and the audit trail keeps what it was.
      */
     public List<FieldChange> correct(InvoiceData data, List<InvoiceLineData> newLines) {
         requireOpen("corrected");
@@ -176,6 +204,13 @@ public class Invoice {
 
         if (changes.isEmpty()) {
             return changes;
+        }
+
+        boolean amountsChanged = changes.stream()
+                .anyMatch(change -> AMOUNT_FIELDS.contains(change.field()) || change.field().startsWith("lines["));
+        if (amountsChanged && !vatBreakdown.isEmpty()) {
+            changes.add(new FieldChange("vatBreakdown", describe(vatBreakdown), null));
+            vatBreakdown.clear();
         }
 
         applyData(data);
@@ -369,5 +404,9 @@ public class Invoice {
 
     public List<ValidationIssue> getIssues() {
         return Collections.unmodifiableList(issues);
+    }
+
+    public List<VatSubtotal> getVatBreakdown() {
+        return Collections.unmodifiableList(vatBreakdown);
     }
 }

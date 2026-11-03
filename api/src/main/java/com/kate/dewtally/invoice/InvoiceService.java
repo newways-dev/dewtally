@@ -32,16 +32,30 @@ public class InvoiceService {
         return BigDecimal.valueOf(clamped).setScale(2, RoundingMode.HALF_UP);
     }
 
-    // One transaction: the invoice and all its lines are saved together or not at all.
+    // One transaction: the invoice, its lines and its VAT breakdown are saved together or not at all.
+    @Transactional
+    public Invoice create(UUID tenantId,
+                          UUID documentId,
+                          ExtractionMethod extractionMethod,
+                          InvoiceData data,
+                          List<InvoiceLine> lines,
+                          List<VatSubtotal> vatBreakdown) {
+        Invoice invoice = new Invoice(tenantId, documentId, extractionMethod, data);
+        lines.forEach(invoice::addLine);
+        invoice.recordVatBreakdown(vatBreakdown);
+        return invoices.save(invoice);
+    }
+
+    /**
+     * Invoice without a VAT breakdown.
+     */
     @Transactional
     public Invoice create(UUID tenantId,
                           UUID documentId,
                           ExtractionMethod extractionMethod,
                           InvoiceData data,
                           List<InvoiceLine> lines) {
-        Invoice invoice = new Invoice(tenantId, documentId, extractionMethod, data);
-        lines.forEach(invoice::addLine);
-        return invoices.save(invoice);
+        return create(tenantId, documentId, extractionMethod, data, lines, List.of());
     }
 
     /**
@@ -52,11 +66,25 @@ public class InvoiceService {
                                    UUID documentId,
                                    InvoiceData data,
                                    List<InvoiceLine> lines,
+                                   List<VatSubtotal> vatBreakdown,
                                    double confidence) {
         Invoice invoice = new Invoice(tenantId, documentId, ExtractionMethod.LLM, data);
         invoice.recordExtractionConfidence(toConfidence(confidence));
         lines.forEach(invoice::addLine);
+        invoice.recordVatBreakdown(vatBreakdown);
         return invoices.save(invoice);
+    }
+
+    /**
+     * Invoice read by a language model, without a VAT breakdown.
+     */
+    @Transactional
+    public Invoice createExtracted(UUID tenantId,
+                                   UUID documentId,
+                                   InvoiceData data,
+                                   List<InvoiceLine> lines,
+                                   double confidence) {
+        return createExtracted(tenantId, documentId, data, lines, List.of(), confidence);
     }
 
     /**

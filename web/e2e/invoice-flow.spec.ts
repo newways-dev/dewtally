@@ -3,7 +3,16 @@ import path from 'node:path'
 
 import { expect, test } from '@playwright/test'
 
-const SAMPLE = path.resolve('..', 'api', 'rechnung.xml')
+// The official XRechnung (UBL) example from the backend's test data: valid, with a full VAT breakdown
+const SAMPLE = path.resolve(
+  '..',
+  'api',
+  'src',
+  'test',
+  'resources',
+  'invoices',
+  'official-xrechnung-ubl.xml',
+)
 
 // The API recognises a file it has seen before (SHA-256) and returns the old invoice.
 // A unique invoice number makes every run upload a new file and get a new invoice.
@@ -74,7 +83,8 @@ test.describe('clerk', () => {
     await page.getByRole('button', { name: 'Save and check again' }).click()
 
     await expect(page.getByText('Changes saved and checked')).toBeVisible()
-    await expect(page.getByText('anna corrected buyerReference')).toBeVisible()
+    // The history shows readable field names, as the user sees them
+    await expect(page.getByText('anna corrected Buyer reference')).toBeVisible()
   })
 })
 

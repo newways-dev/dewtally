@@ -51,7 +51,8 @@ class InvoiceImporter {
                 line.unitCode(),
                 line.unitPrice(),
                 line.netAmount(),
-                line.taxRate());
+                line.taxRate(),
+                line.taxCategory());
     }
 
     @Transactional
@@ -61,7 +62,8 @@ class InvoiceImporter {
                 document.getId(),
                 ExtractionMethod.STRUCTURED,
                 parsed.data(),
-                toInvoiceLines(parsed));
+                toInvoiceLines(parsed),
+                parsed.vatBreakdown());
         return validate(document, invoice, content);
     }
 
@@ -72,6 +74,7 @@ class InvoiceImporter {
                 document.getId(),
                 extraction.invoice().data(),
                 toInvoiceLines(extraction.invoice()),
+                extraction.invoice().vatBreakdown(),
                 extraction.confidence());
         return validate(document, invoice, content);
     }
