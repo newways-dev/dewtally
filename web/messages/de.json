@@ -230,6 +230,24 @@
     "netTotal": "Nettosumme",
     "tax": "USt.",
     "gross": "Gesamt",
+    "vatBreakdown": "USt-Aufstellung",
+    "vatCategory": "Kategorie",
+    "vatRate": "USt.",
+    "vatBase": "Bemessungsgrundlage",
+    "vatAmount": "Steuerbetrag",
+    "reverseCharge": "§ 13b UStG",
+    "intraEu": "Innergem. Erwerb",
+    "vatCategories": {
+      "S": "Regelsteuersatz",
+      "Z": "Nullsatz",
+      "E": "Steuerbefreit",
+      "AE": "Umkehr der Steuerschuld",
+      "K": "Innergemeinschaftliche Lieferung",
+      "G": "Ausfuhr in Drittländer",
+      "O": "Nicht steuerbar",
+      "L": "Kanarische Inseln (IGIC)",
+      "M": "Ceuta und Melilla (IPSI)"
+    },
     "history": "Historie",
     "noHistory": "Noch keine Änderungen.",
     "changes": {
@@ -299,7 +317,8 @@
       "unitPrice": "Einzelpreis",
       "lineNet": "Netto",
       "taxRate": "USt. %",
-      "extractionMethod": "Datenquelle"
+      "extractionMethod": "Datenquelle",
+      "vatBreakdown": "USt-Aufstellung"
     },
     "errors": {
       "forbidden": "Ihre Rolle erlaubt diese Aktion nicht.",
