@@ -41,6 +41,13 @@ resource "azurerm_container_app" "keycloak" {
     identity            = azurerm_user_assigned_identity.apps.id
   }
 
+  # The web UI's client password, filled into the realm on import (see web.tf)
+  secret {
+    name                = "keycloak-web-client-secret"
+    key_vault_secret_id = azurerm_key_vault_secret.web_client_secret.versionless_id
+    identity            = azurerm_user_assigned_identity.apps.id
+  }
+
   # Public HTTPS: users log in here. Azure terminates TLS and forwards plain HTTP to port 8080.
   ingress {
     external_enabled = true
@@ -96,6 +103,16 @@ resource "azurerm_container_app" "keycloak" {
       env {
         name  = "KC_HTTP_ENABLED"
         value = "true"
+      }
+      # Filled into the realm file on the first import: where the web UI lives (allowed redirect after login)
+      # and its client password. Same names as in compose.yaml.
+      env {
+        name  = "DEWTALLY_WEB_URL"
+        value = local.web_url
+      }
+      env {
+        name        = "DEWTALLY_WEB_CLIENT_SECRET"
+        secret_name = "keycloak-web-client-secret"
       }
 
       # Health endpoints on Keycloak's management port. Startup: up to 5 minutes for the first start
