@@ -7,6 +7,7 @@ import com.kate.dewtally.extraction.LlmInvoiceExtractor;
 import com.kate.dewtally.extraction.PdfText;
 import com.kate.dewtally.extraction.PdfTextExtractor;
 import com.kate.dewtally.invoice.InvoiceData;
+import com.kate.dewtally.invoice.VatSubtotal;
 import com.kate.dewtally.parsing.InvoiceParser;
 import com.kate.dewtally.parsing.ParsedInvoice;
 import com.kate.dewtally.parsing.ParsedLine;
@@ -24,6 +25,7 @@ import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -52,8 +54,9 @@ class ExtractionEval {
     private static final double MIN_FIELD_ACCURACY = 0.95;
     // A wrong value here is caught by other checks and cannot send money to the wrong place:
     // suppliers are matched by VAT ID first (a wrong name only raises DT-UNKNOWN-SUPPLIER),
-    // and a wrong line count shows up in the line sum check.
-    private static final Set<String> LOW_RISK_FIELDS = Set.of("supplierName", "lineCount");
+    // a wrong line count shows up in the line sum check, and a wrong VAT breakdown in the VAT rules
+    // (BR-CO-14, DT-VAT-BASE-TOTAL). The breakdown matters for booking, not for how much is paid.
+    private static final Set<String> LOW_RISK_FIELDS = Set.of("supplierName", "lineCount", "vatRows", "vatAmounts");
 
     @Autowired
     private InvoiceParser parser;
@@ -108,7 +111,40 @@ class ExtractionEval {
                 amount(results, "lineNetSum", expectedSum, lineNetSum(actual));
             }
         }
+        // VAT breakdown: the same categories and rates, and the same amounts per row
+        if (!truth.vatBreakdown().isEmpty()) {
+            String expectedRows = vatRows(truth.vatBreakdown());
+            String actualRows = actual.vatBreakdown().isEmpty() ? EMPTY : vatRows(actual.vatBreakdown());
+            results.add(new FieldResult("vatRows", expectedRows.equals(actualRows), expectedRows, actualRows));
+
+            String expectedAmounts = vatAmounts(truth.vatBreakdown());
+            String actualAmounts = actual.vatBreakdown().isEmpty() ? EMPTY : vatAmounts(actual.vatBreakdown());
+            results.add(new FieldResult("vatAmounts", expectedAmounts.equals(actualAmounts),
+                    expectedAmounts, actualAmounts));
+        }
         return results;
+    }
+
+    // "S 19", "AE 0": a row's category and rate, the same however many decimals are printed
+    private static String vatKey(VatSubtotal row) {
+        String category = row.category() == null ? "?" : row.category().toUpperCase(Locale.ROOT);
+        String rate = row.rate() == null ? "?" : row.rate().stripTrailingZeros().toPlainString();
+        return category + " " + rate;
+    }
+
+    private static String vatRows(List<VatSubtotal> rows) {
+        return rows.stream().map(ExtractionEval::vatKey).sorted().collect(Collectors.joining(" | "));
+    }
+
+    private static String vatAmounts(List<VatSubtotal> rows) {
+        return rows.stream()
+                .sorted(Comparator.comparing(ExtractionEval::vatKey))
+                .map(row -> vatKey(row) + ": " + plain(row.taxableAmount()) + " / " + plain(row.taxAmount()))
+                .collect(Collectors.joining(" | "));
+    }
+
+    private static String plain(BigDecimal value) {
+        return value == null ? EMPTY : value.stripTrailingZeros().toPlainString();
     }
 
     // Null if there are no lines or a line has no net amount.
