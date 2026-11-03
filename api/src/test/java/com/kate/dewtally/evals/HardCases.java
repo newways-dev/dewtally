@@ -1,6 +1,7 @@
 package com.kate.dewtally.evals;
 
 import com.kate.dewtally.invoice.InvoiceData;
+import com.kate.dewtally.invoice.VatSubtotal;
 import com.kate.dewtally.parsing.ParsedInvoice;
 import com.kate.dewtally.parsing.ParsedLine;
 
@@ -24,7 +25,10 @@ final class HardCases {
             grossLinePrices(),
             germanFormats(),
             allowanceAndCharge(),
-            prepayment());
+            prepayment(),
+            reverseCharge(),
+            smallBusiness(),
+            twoRates());
 
     private HardCases() {
     }
@@ -169,6 +173,69 @@ final class HardCases {
                         SELLER_IBAN, "1000.00", "190.00", "1190.00", null, null, "1000.00"));
     }
 
+    // Construction work under § 13b UStG: no VAT on the invoice, the buyer owes it (category AE).
+    // Trap: the buyer's VAT ID is printed too; supplierVatId must be the seller's.
+    private static Case reverseCharge() {
+        return new Case("reverse-charge", """
+                Trockenbau Petersen GmbH · Bergedorfer Straße 50 · 21029 Hamburg · USt-IdNr. DE301234567
+                An: Generalunternehmer Bau Nord GmbH, Hafenring 9, 21079 Hamburg, USt-IdNr. DE277654321
+                Rechnung TP-2027-019 vom 08.03.2027
+                Pos. Leistung Menge Einzelpreis Betrag
+                1 Trockenbauarbeiten 2. OG 1 pauschal 4.800,00 € 4.800,00 €
+                2 Material Gipskarton 40 Platten 5,00 € 200,00 €
+                Nettobetrag 5.000,00 €
+                USt. 0 % 0,00 €
+                Gesamtbetrag 5.000,00 €
+                Steuerschuldnerschaft des Leistungsempfängers gemäß § 13b UStG.
+                Zahlbar bis 07.04.2027 · IBAN DE89 3704 0044 0532 0130 00
+                """,
+                withVat(expected("TP-2027-019", "2027-03-08", "2027-04-07", "Trockenbau Petersen GmbH",
+                                "DE301234567", SELLER_IBAN, "5000.00", "0.00", "5000.00", null, null,
+                                "4800.00", "200.00"),
+                        vat("AE", "0", "5000.00", "0.00")));
+    }
+
+    // Small business under § 19 UStG: no VAT charged (category E).
+    // Trap: only a tax number (Steuernummer) is printed, which is not a VAT ID.
+    private static Case smallBusiness() {
+        return new Case("small-business", """
+                Grafikdesign Lena Vogt · Wilhelmsburger Straße 7 · 21107 Hamburg
+                Steuernummer 43/123/45678
+                Rechnung 2027-007 · 04.03.2027
+                Pos. Leistung Menge Betrag
+                1 Logo-Entwurf 1 pauschal 450,00 €
+                2 Visitenkarten-Layout 1 pauschal 150,00 €
+                Nettobetrag 600,00 €
+                USt. 0 % 0,00 €
+                Gesamtbetrag 600,00 €
+                Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.
+                Zahlbar bis 18.03.2027 · IBAN DE44 5001 0517 5407 3249 31
+                """,
+                withVat(expected("2027-007", "2027-03-04", "2027-03-18", "Grafikdesign Lena Vogt",
+                                null, OTHER_IBAN, "600.00", "0.00", "600.00", null, null, "450.00", "150.00"),
+                        vat("E", "0", "600.00", "0.00")));
+    }
+
+    // Office supplies at 19 % and a book at 7 %: two rows in the VAT summary.
+    private static Case twoRates() {
+        return new Case("two-rates", """
+                Papier & Buch Elbe GmbH · Mönckebergstraße 3 · 20095 Hamburg · USt-IdNr. DE289012345
+                Rechnung PB-2027-204 vom 18.03.2027
+                Pos. Artikel Menge Einzelpreis Betrag USt.
+                1 Druckerpapier A4 10 Pakete 4,50 € 45,00 € 19 %
+                2 Fachbuch Steuerrecht 2027 2 Stück 49,00 € 98,00 € 7 %
+                Nettobetrag 143,00 €
+                USt. 19 % auf 45,00 € 8,55 €
+                USt. 7 % auf 98,00 € 6,86 €
+                Gesamtbetrag 158,41 €
+                Zahlbar bis 17.04.2027 · IBAN DE89 3704 0044 0532 0130 00
+                """,
+                withVat(expected("PB-2027-204", "2027-03-18", "2027-04-17", "Papier & Buch Elbe GmbH",
+                                "DE289012345", SELLER_IBAN, "143.00", "15.41", "158.41", null, null,
+                                "45.00", "98.00"),
+                        vat("S", "19", "45.00", "8.55"), vat("S", "7", "98.00", "6.86")));
+    }
+
     /**
      * @param lineNets net amount of each line as printed; null for a line whose net amount is not printed
      */
@@ -188,6 +255,16 @@ final class HardCases {
             lines.add(new ParsedLine(i + 1, null, null, null, null, lineNet, null));
         }
         return new ParsedInvoice(data, lines);
+    }
+
+    // The same expected answer, plus the VAT summary the invoice prints
+    private static ParsedInvoice withVat(ParsedInvoice expected, VatSubtotal... rows) {
+        return new ParsedInvoice(expected.data(), expected.lines(), List.of(rows));
+    }
+
+    // Only category, rate and amounts are compared; the exemption reason is not
+    private static VatSubtotal vat(String category, String rate, String taxable, String tax) {
+        return new VatSubtotal(category, new BigDecimal(rate), new BigDecimal(taxable), new BigDecimal(tax), null);
     }
 
     record Case(String name, String text, ParsedInvoice expected) {

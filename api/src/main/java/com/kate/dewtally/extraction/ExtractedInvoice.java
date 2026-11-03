@@ -3,6 +3,7 @@ package com.kate.dewtally.extraction;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import com.kate.dewtally.invoice.InvoiceData;
+import com.kate.dewtally.invoice.VatSubtotal;
 import com.kate.dewtally.parsing.ParsedInvoice;
 import com.kate.dewtally.parsing.ParsedLine;
 
@@ -12,6 +13,7 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * Exactly what the language model must return. Spring AI turns this record into a JSON schema,
@@ -51,24 +53,41 @@ public record ExtractedInvoice(
         String chargeTotal,
         @JsonPropertyDescription("Invoice lines in the order they appear")
         List<Line> lines,
+        @JsonPropertyDescription("VAT summary: one entry per VAT category and rate, as printed on the invoice")
+        List<VatRow> vatBreakdown,
         @JsonPropertyDescription("Your confidence from 0.0 to 1.0 that all fields above are correct")
         double confidence
 ) {
 
-    // Tells Jackson to use this (canonical) constructor for JSON, not the short one below.
+    // UNTDID 5305 codes used by EN 16931; anything else from the model becomes null
+    private static final Set<String> VAT_CATEGORIES = Set.of("S", "Z", "E", "AE", "K", "G", "O", "L", "M");
+
+    // Tells Jackson to use this (canonical) constructor for JSON, not the short ones below.
     @JsonCreator
     public ExtractedInvoice {
     }
 
     /**
-     * Answer without document-level allowances and charges (used by tests).
+     * Answer without a VAT breakdown (used by tests).
+     */
+    public ExtractedInvoice(String invoiceNumber, String issueDate, String dueDate, String currency,
+                            String supplierName, String supplierVatId, String buyerReference, String iban,
+                            String netAmount, String taxAmount, String grossAmount,
+                            String allowanceTotal, String chargeTotal,
+                            List<Line> lines, double confidence) {
+        this(invoiceNumber, issueDate, dueDate, currency, supplierName, supplierVatId, buyerReference, iban,
+                netAmount, taxAmount, grossAmount, allowanceTotal, chargeTotal, lines, List.of(), confidence);
+    }
+
+    /**
+     * Answer without document-level allowances and charges and without a VAT breakdown (used by tests).
      */
     public ExtractedInvoice(String invoiceNumber, String issueDate, String dueDate, String currency,
                             String supplierName, String supplierVatId, String buyerReference, String iban,
                             String netAmount, String taxAmount, String grossAmount,
                             List<Line> lines, double confidence) {
         this(invoiceNumber, issueDate, dueDate, currency, supplierName, supplierVatId, buyerReference, iban,
-                netAmount, taxAmount, grossAmount, "", "", lines, confidence);
+                netAmount, taxAmount, grossAmount, "", "", lines, List.of(), confidence);
     }
 
     static String text(String value, int maxLength) {
@@ -92,6 +111,12 @@ public record ExtractedInvoice(
     static String currency(String value) {
         String text = compact(value, 10);
         return text != null && text.matches("[A-Z]{3}") ? text : null;
+    }
+
+    // Only the known codes; "Reverse Charge" or "19%" from a confused model is not a category
+    static String vatCategory(String value) {
+        String code = compact(value, 5);
+        return code != null && VAT_CATEGORIES.contains(code) ? code : null;
     }
 
     static LocalDate date(String value) {
@@ -131,13 +156,32 @@ public record ExtractedInvoice(
         return net != null && net.signum() < 0 ? positive.negate() : positive;
     }
 
+    private static List<VatSubtotal> vatSubtotals(List<VatRow> rows) {
+        List<VatSubtotal> result = new ArrayList<>();
+        for (VatRow row : rows == null ? List.<VatRow>of() : rows) {
+            VatSubtotal subtotal = new VatSubtotal(
+                    vatCategory(row.category()),
+                    amount(row.rate()),
+                    amount(row.taxableAmount()),
+                    amount(row.taxAmount()),
+                    text(row.exemptionReason(), 1000));
+            // An entry without any usable value is noise, not a row
+            boolean empty = subtotal.category() == null && subtotal.rate() == null
+                    && subtotal.taxableAmount() == null && subtotal.taxAmount() == null;
+            if (!empty) {
+                result.add(subtotal);
+            }
+        }
+        return result;
+    }
+
     /**
      * Copy with another IBAN; used to put the real IBAN back after masking.
      */
     ExtractedInvoice withIban(String newIban) {
         return new ExtractedInvoice(invoiceNumber, issueDate, dueDate, currency, supplierName, supplierVatId,
                 buyerReference, newIban, netAmount, taxAmount, grossAmount, allowanceTotal, chargeTotal,
-                lines, confidence);
+                lines, vatBreakdown, confidence);
     }
 
     /**
@@ -169,9 +213,10 @@ public record ExtractedInvoice(
                     text(line.unit(), 10),
                     amount(line.unitPrice()),
                     amount(line.netAmount()),
-                    amount(line.taxRate())));
+                    amount(line.taxRate()),
+                    vatCategory(line.taxCategory())));
         }
-        return new ParsedInvoice(data, parsedLines);
+        return new ParsedInvoice(data, parsedLines, vatSubtotals(vatBreakdown));
     }
 
     public record Line(
@@ -186,7 +231,35 @@ public record ExtractedInvoice(
             @JsonPropertyDescription("Net line total as plain number with dot")
             String netAmount,
             @JsonPropertyDescription("VAT rate in percent as plain number, e.g. 19")
-            String taxRate
+            String taxRate,
+            @JsonPropertyDescription("VAT category code of this line: S, AE, K, E, G, Z or O; empty if unclear")
+            String taxCategory
+    ) {
+
+        @JsonCreator
+        public Line {
+        }
+
+        /**
+         * Line without a VAT category (used by tests).
+         */
+        public Line(String description, String quantity, String unit, String unitPrice, String netAmount,
+                    String taxRate) {
+            this(description, quantity, unit, unitPrice, netAmount, taxRate, "");
+        }
+    }
+
+    public record VatRow(
+            @JsonPropertyDescription("VAT category code: S, AE, K, E, G, Z or O; empty if unclear")
+            String category,
+            @JsonPropertyDescription("VAT rate in percent as plain number, e.g. 19; 0 if no VAT is charged")
+            String rate,
+            @JsonPropertyDescription("Net amount this rate applies to, plain number with dot")
+            String taxableAmount,
+            @JsonPropertyDescription("VAT amount of this rate, plain number with dot")
+            String taxAmount,
+            @JsonPropertyDescription("Printed reason why no VAT is charged, copied as written; empty if none")
+            String exemptionReason
     ) {
     }
 }

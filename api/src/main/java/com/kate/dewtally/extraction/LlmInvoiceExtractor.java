@@ -54,6 +54,21 @@ public class LlmInvoiceExtractor {
             - iban: the seller's bank account. Return the placeholder exactly as written, e.g. [IBAN_1].
               If several IBANs appear, choose the one the invoice asks to pay to.
             - VAT ID without spaces.
+            - vatBreakdown: the VAT summary, one entry per VAT rate as printed, for example
+                "19 % MwSt. auf 1.000,00 = 190,00" or "USt 7 % 14,00". If the invoice has only one rate,
+                that rate applies to the whole net total: return one entry with the printed net total as
+                taxableAmount, also when the rate is 0 % or no VAT is charged.
+                Never calculate a taxable amount or a VAT amount that is not printed: leave it empty.
+            - VAT category codes, in vatBreakdown and in lines, chosen by what the invoice says:
+              S = normal VAT, e.g. 19 % or 7 %.
+              AE = reverse charge: "Steuerschuldnerschaft des Leistungsempfängers", "Reverse Charge", "§ 13b UStG".
+              K = intra-EU supply: "innergemeinschaftliche Lieferung", "steuerfreie innergemeinschaftliche Lieferung".
+              E = exempt from VAT: "Kleinunternehmer gemäß § 19 UStG", "steuerfrei nach § 4 UStG".
+              G = export outside the EU: "Ausfuhrlieferung", "steuerfreie Ausfuhr".
+              Z = zero rate. O = not subject to VAT: "nicht steuerbar".
+              Empty string if the invoice does not make the category clear.
+            - exemptionReason: the printed sentence that explains why no VAT is charged, copied as written.
+              Empty for normal VAT.
             - confidence: how sure you are that all fields are correct, from 0.0 to 1.0.
               Use a low value if the text is unclear, values are missing or the document may not be an invoice.
             """;
