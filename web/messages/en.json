@@ -230,6 +230,24 @@
     "netTotal": "Net total",
     "tax": "VAT",
     "gross": "Total",
+    "vatBreakdown": "VAT breakdown",
+    "vatCategory": "Category",
+    "vatRate": "VAT",
+    "vatBase": "Taxable amount",
+    "vatAmount": "VAT amount",
+    "reverseCharge": "Reverse charge § 13b",
+    "intraEu": "Intra-EU acquisition",
+    "vatCategories": {
+      "S": "Standard rate",
+      "Z": "Zero rated",
+      "E": "Exempt",
+      "AE": "Reverse charge",
+      "K": "Intra-EU supply",
+      "G": "Export outside the EU",
+      "O": "Outside the scope of VAT",
+      "L": "Canary Islands (IGIC)",
+      "M": "Ceuta and Melilla (IPSI)"
+    },
     "history": "History",
     "noHistory": "No changes yet.",
     "changes": {
@@ -299,7 +317,8 @@
       "unitPrice": "Unit price",
       "lineNet": "Net",
       "taxRate": "VAT %",
-      "extractionMethod": "Data source"
+      "extractionMethod": "Data source",
+      "vatBreakdown": "VAT breakdown"
     },
     "errors": {
       "forbidden": "Your role does not allow this action.",

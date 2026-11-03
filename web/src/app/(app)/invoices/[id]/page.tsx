@@ -36,6 +36,12 @@ type Document = components['schemas']['DocumentResponse']
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+// VAT category codes of EN 16931 (UNTDID 5305) that have a readable name
+const VAT_CATEGORIES = ['S', 'Z', 'E', 'AE', 'K', 'G', 'O', 'L', 'M'] as const
+type VatCategory = (typeof VAT_CATEGORIES)[number]
+const isVatCategory = (code?: string): code is VatCategory =>
+  !!code && (VAT_CATEGORIES as readonly string[]).includes(code)
+
 // Another company's invoice answers 404 in the API (its existence is not revealed): the same here.
 async function load(id: string) {
   try {
@@ -64,7 +70,11 @@ const findingStyles = {
     className:
       'border-status-review bg-status-review text-status-review-foreground',
   },
-  INFO: { icon: Info, className: '' },
+  // Notes for accounting (e.g. reverse charge): calm, not alarming
+  INFO: {
+    icon: Info,
+    className: 'border-brand-soft bg-brand-soft text-brand-soft-foreground',
+  },
 } as const
 
 export default async function InvoicePage({
@@ -104,6 +114,13 @@ export default async function InvoicePage({
   const currency = invoice.currency ?? 'EUR'
   const money = (value?: number) =>
     value != null ? format.number(value, { style: 'currency', currency }) : '—'
+  const percent = (value?: number) =>
+    value != null
+      ? format.number(value / 100, {
+          style: 'percent',
+          maximumFractionDigits: 2,
+        })
+      : '—'
   const day = (date?: string) =>
     date
       ? format.dateTime(new Date(date), {
@@ -111,8 +128,14 @@ export default async function InvoicePage({
           timeZone: 'UTC',
         })
       : '—'
+  const categoryName = (code?: string) =>
+    isVatCategory(code) ? t(`vatCategories.${code}`) : (code ?? '—')
+
   const issues = invoice.issues ?? []
   const lines = invoice.lines ?? []
+  const vat = invoice.vatBreakdown ?? []
+  const reverseCharge = vat.some((row) => row.category === 'AE')
+  const intraEu = vat.some((row) => row.category === 'K')
 
   return (
     <>
@@ -140,6 +163,23 @@ export default async function InvoicePage({
               {money(invoice.grossAmount)}
             </span>
             {invoice.status && <StatusBadge status={invoice.status} />}
+            {/* Accounting must book these differently: visible at first sight */}
+            {reverseCharge && (
+              <Badge
+                variant='outline'
+                className='border-brand-soft bg-brand-soft text-brand-soft-foreground'
+              >
+                {t('reverseCharge')}
+              </Badge>
+            )}
+            {intraEu && (
+              <Badge
+                variant='outline'
+                className='border-brand-soft bg-brand-soft text-brand-soft-foreground'
+              >
+                {t('intraEu')}
+              </Badge>
+            )}
           </div>
         </div>
         <InvoiceActions invoice={invoice} roles={user?.roles ?? []} />
@@ -232,6 +272,7 @@ export default async function InvoicePage({
                 <TableRow className='hover:bg-transparent'>
                   <TableHead className='pl-6'>{t('description')}</TableHead>
                   <TableHead className='text-right'>{t('quantity')}</TableHead>
+                  <TableHead className='text-right'>{t('vatRate')}</TableHead>
                   <TableHead className='pr-6 text-right'>{t('net')}</TableHead>
                 </TableRow>
               </TableHeader>
@@ -246,6 +287,9 @@ export default async function InvoicePage({
                         ? format.number(line.quantity)
                         : '—'}{' '}
                       {line.unitCode}
+                    </TableCell>
+                    <TableCell className='text-right font-mono text-muted-foreground tabular-nums'>
+                      {percent(line.taxRate)}
                     </TableCell>
                     <TableCell className='pr-6 text-right font-mono tabular-nums'>
                       {money(line.netAmount)}
@@ -284,6 +328,57 @@ export default async function InvoicePage({
                 {money(invoice.grossAmount)}
               </dd>
             </dl>
+
+            {/* VAT per category and rate, as stated in the document (EN 16931 BG-23) */}
+            {vat.length > 0 && (
+              <div className='border-t'>
+                <div className='px-6 pt-4 pb-1 text-sm font-medium'>
+                  {t('vatBreakdown')}
+                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow className='hover:bg-transparent'>
+                      <TableHead className='pl-6'>{t('vatCategory')}</TableHead>
+                      <TableHead className='text-right'>
+                        {t('vatRate')}
+                      </TableHead>
+                      <TableHead className='text-right'>
+                        {t('vatBase')}
+                      </TableHead>
+                      <TableHead className='pr-6 text-right'>
+                        {t('vatAmount')}
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {vat.map((row, index) => (
+                      <TableRow key={`${row.category}-${row.rate}-${index}`}>
+                        <TableCell className='pl-6 whitespace-normal'>
+                          <span className='mr-2 font-mono text-xs text-subtle'>
+                            {row.category ?? '?'}
+                          </span>
+                          {categoryName(row.category)}
+                          {row.exemptionReason && (
+                            <span className='block text-xs text-muted-foreground'>
+                              {row.exemptionReason}
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className='text-right font-mono tabular-nums'>
+                          {percent(row.rate)}
+                        </TableCell>
+                        <TableCell className='text-right font-mono tabular-nums'>
+                          {money(row.taxableAmount)}
+                        </TableCell>
+                        <TableCell className='pr-6 text-right font-mono tabular-nums'>
+                          {money(row.taxAmount)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </Card>
 
           <Card className='shadow-none'>
@@ -310,7 +405,7 @@ export default async function InvoicePage({
                           field: fieldLabel(change.field),
                         })}
                         {change.changeType === 'CORRECTION' && (
-                          <span className='block font-mono text-xs text-subtle'>
+                          <span className='block font-mono text-xs break-all text-subtle'>
                             {change.oldValue ?? '—'} → {change.newValue ?? '—'}
                           </span>
                         )}

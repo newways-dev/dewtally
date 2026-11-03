@@ -42,6 +42,10 @@ public class InvoiceLine {
     @Column(name = "tax_rate", precision = 5, scale = 2)
     private BigDecimal taxRate;
 
+    // BT-151: S standard, AE reverse charge, E exempt, ... (see VatSubtotal); null if unknown
+    @Column(name = "tax_category", length = 5)
+    private String taxCategory;
+
     protected InvoiceLine() {
         // Required by JPA.
     }
@@ -52,7 +56,8 @@ public class InvoiceLine {
                        String unitCode,
                        BigDecimal unitPrice,
                        BigDecimal netAmount,
-                       BigDecimal taxRate) {
+                       BigDecimal taxRate,
+                       String taxCategory) {
         this.lineNo = lineNo;
         this.description = description;
         this.quantity = quantity;
@@ -60,6 +65,20 @@ public class InvoiceLine {
         this.unitPrice = unitPrice;
         this.netAmount = netAmount;
         this.taxRate = taxRate;
+        this.taxCategory = taxCategory;
+    }
+
+    /**
+     * A line without a known VAT category (entered by hand or read by the model).
+     */
+    public InvoiceLine(int lineNo,
+                       String description,
+                       BigDecimal quantity,
+                       String unitCode,
+                       BigDecimal unitPrice,
+                       BigDecimal netAmount,
+                       BigDecimal taxRate) {
+        this(lineNo, description, quantity, unitCode, unitPrice, netAmount, taxRate, null);
     }
 
     // Package-private: only Invoice.addLine() may connect a line to an invoice.
@@ -69,6 +88,7 @@ public class InvoiceLine {
 
     // Package-private: only Invoice.correct() may change a line.
     // The line is updated in place (not replaced), so its line number stays unique at all times.
+    // The VAT category is not part of a correction and stays as read from the document.
     void update(InvoiceLineData data) {
         this.description = data.description();
         this.quantity = data.quantity();
@@ -108,5 +128,9 @@ public class InvoiceLine {
 
     public BigDecimal getTaxRate() {
         return taxRate;
+    }
+
+    public String getTaxCategory() {
+        return taxCategory;
     }
 }

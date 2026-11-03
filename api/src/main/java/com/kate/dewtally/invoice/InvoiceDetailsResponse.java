@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Full view of one invoice: header data, lines and validation issues.
+ * Full view of one invoice: header data, lines, VAT breakdown and validation issues.
  * The version must be sent back with a correction (optimistic locking).
  */
 public record InvoiceDetailsResponse(
@@ -32,10 +32,11 @@ public record InvoiceDetailsResponse(
         BigDecimal chargeTotal,
         Instant createdAt,
         List<Line> lines,
+        List<Vat> vatBreakdown,
         List<Issue> issues
 ) {
 
-    // Must be called inside a transaction: lines and issues are loaded lazily.
+    // Must be called inside a transaction: lines, VAT breakdown and issues are loaded lazily.
     public static InvoiceDetailsResponse from(Invoice invoice) {
         return new InvoiceDetailsResponse(
                 invoice.getId(),
@@ -59,6 +60,7 @@ public record InvoiceDetailsResponse(
                 invoice.getChargeTotal(),
                 invoice.getCreatedAt(),
                 invoice.getLines().stream().map(Line::from).toList(),
+                invoice.getVatBreakdown().stream().map(Vat::from).toList(),
                 invoice.getIssues().stream().map(Issue::from).toList());
     }
 
@@ -69,7 +71,8 @@ public record InvoiceDetailsResponse(
             String unitCode,
             BigDecimal unitPrice,
             BigDecimal netAmount,
-            BigDecimal taxRate
+            BigDecimal taxRate,
+            String taxCategory
     ) {
         static Line from(InvoiceLine line) {
             return new Line(
@@ -79,7 +82,28 @@ public record InvoiceDetailsResponse(
                     line.getUnitCode(),
                     line.getUnitPrice(),
                     line.getNetAmount(),
-                    line.getTaxRate());
+                    line.getTaxRate(),
+                    line.getTaxCategory());
+        }
+    }
+
+    /**
+     * One row of the VAT breakdown: category, rate, net amount and VAT.
+     */
+    public record Vat(
+            String category,
+            BigDecimal rate,
+            BigDecimal taxableAmount,
+            BigDecimal taxAmount,
+            String exemptionReason
+    ) {
+        static Vat from(VatSubtotal subtotal) {
+            return new Vat(
+                    subtotal.category(),
+                    subtotal.rate(),
+                    subtotal.taxableAmount(),
+                    subtotal.taxAmount(),
+                    subtotal.exemptionReason());
         }
     }
 

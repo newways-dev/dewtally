@@ -325,6 +325,7 @@ export interface components {
             /** Format: date-time */
             createdAt?: string;
             lines?: components["schemas"]["Line"][];
+            vatBreakdown?: components["schemas"]["Vat"][];
             issues?: components["schemas"]["Issue"][];
         };
         Issue: {
@@ -342,6 +343,14 @@ export interface components {
             unitPrice?: number;
             netAmount?: number;
             taxRate?: number;
+            taxCategory?: string;
+        };
+        Vat: {
+            category?: string;
+            rate?: number;
+            taxableAmount?: number;
+            taxAmount?: number;
+            exemptionReason?: string;
         };
         CreateSupplierRequest: {
             name?: string;
@@ -471,7 +480,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -539,7 +550,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -559,7 +572,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody: {
@@ -583,7 +598,10 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+                iban: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -603,7 +621,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -623,7 +643,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: {
@@ -647,7 +669,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: {
@@ -670,8 +694,8 @@ export interface operations {
     list_1: {
         parameters: {
             query?: {
-                arg1?: number;
-                arg2?: number;
+                page?: number;
+                size?: number;
             };
             header?: never;
             path?: never;
@@ -721,7 +745,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -740,10 +766,10 @@ export interface operations {
     list_2: {
         parameters: {
             query?: {
-                arg1?: "RECEIVED" | "VALID" | "INVALID" | "NEEDS_REVIEW" | "ACCEPTED" | "REJECTED" | "EXPORTED";
-                arg2?: string;
-                arg3?: number;
-                arg4?: number;
+                status?: "RECEIVED" | "VALID" | "INVALID" | "NEEDS_REVIEW" | "ACCEPTED" | "REJECTED" | "EXPORTED";
+                q?: string;
+                page?: number;
+                size?: number;
             };
             header?: never;
             path?: never;
@@ -766,7 +792,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -786,7 +814,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -826,7 +856,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -846,7 +878,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;

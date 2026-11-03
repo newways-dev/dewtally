@@ -1,6 +1,7 @@
 package com.kate.dewtally.parsing;
 
 import com.kate.dewtally.invoice.InvoiceData;
+import com.kate.dewtally.invoice.VatSubtotal;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
@@ -40,9 +41,29 @@ final class CiiInvoiceParser {
                     xml.decimal(line, "ram:SpecifiedLineTradeAgreement/ram:NetPriceProductTradePrice/ram:ChargeAmount"),
                     xml.decimal(line, settlement
                             + "ram:SpecifiedTradeSettlementLineMonetarySummation/ram:LineTotalAmount"),
-                    xml.decimal(line, settlement + "ram:ApplicableTradeTax/ram:RateApplicablePercent")));
+                    xml.decimal(line, settlement + "ram:ApplicableTradeTax/ram:RateApplicablePercent"),
+                    xml.text(line, settlement + "ram:ApplicableTradeTax/ram:CategoryCode", 5)));
         }
         return lines;
+    }
+
+    // BG-23: header-level ApplicableTradeTax, one per VAT category and rate. The line-level ones
+    // (inside each line) only name the line's category and are not part of the breakdown.
+    private static List<VatSubtotal> vatBreakdown(XPathReader xml, Element root) {
+        List<VatSubtotal> breakdown = new ArrayList<>();
+        for (Element tax : xml.elements(root, SETTLEMENT + "ram:ApplicableTradeTax")) {
+            String reason = xml.text(tax, "ram:ExemptionReason", 1000);
+            if (reason == null) {
+                reason = xml.text(tax, "ram:ExemptionReasonCode", 1000);
+            }
+            breakdown.add(new VatSubtotal(
+                    xml.text(tax, "ram:CategoryCode", 5),
+                    xml.decimal(tax, "ram:RateApplicablePercent"),
+                    xml.decimal(tax, "ram:BasisAmount"),
+                    xml.decimal(tax, "ram:CalculatedAmount"),
+                    reason));
+        }
+        return breakdown;
     }
 
     // CII dates use format code 102: yyyyMMdd, e.g. 20270314
@@ -86,6 +107,6 @@ final class CiiInvoiceParser {
                 allowances,
                 charges);
 
-        return new ParsedInvoice(data, lines(xml, root));
+        return new ParsedInvoice(data, lines(xml, root), vatBreakdown(xml, root));
     }
 }

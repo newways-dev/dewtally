@@ -1,6 +1,7 @@
 package com.kate.dewtally.parsing;
 
 import com.kate.dewtally.invoice.InvoiceData;
+import com.kate.dewtally.invoice.VatSubtotal;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
@@ -27,6 +28,7 @@ final class UblInvoiceParser {
         // Credit notes use different element names for lines and quantities.
         String lineElement = creditNote ? "cac:CreditNoteLine" : "cac:InvoiceLine";
         String quantity = creditNote ? "cbc:CreditedQuantity" : "cbc:InvoicedQuantity";
+        String taxCategory = "cac:Item/cac:ClassifiedTaxCategory/";
 
         List<ParsedLine> lines = new ArrayList<>();
         int lineNo = 1;
@@ -38,9 +40,30 @@ final class UblInvoiceParser {
                     xml.text(line, quantity + "/@unitCode", 10),
                     xml.decimal(line, "cac:Price/cbc:PriceAmount"),
                     xml.decimal(line, "cbc:LineExtensionAmount"),
-                    xml.decimal(line, "cac:Item/cac:ClassifiedTaxCategory/cbc:Percent")));
+                    xml.decimal(line, taxCategory + "cbc:Percent"),
+                    xml.text(line, taxCategory + "cbc:ID", 5)));
         }
         return lines;
+    }
+
+    // BG-23: one TaxSubtotal per VAT category and rate. A second TaxTotal in the accounting currency
+    // (BT-111) has no subtotals, so it is not picked up here.
+    private static List<VatSubtotal> vatBreakdown(XPathReader xml, Element root) {
+        List<VatSubtotal> breakdown = new ArrayList<>();
+        for (Element subtotal : xml.elements(root, "cac:TaxTotal/cac:TaxSubtotal")) {
+            String category = "cac:TaxCategory/";
+            String reason = xml.text(subtotal, category + "cbc:TaxExemptionReason", 1000);
+            if (reason == null) {
+                reason = xml.text(subtotal, category + "cbc:TaxExemptionReasonCode", 1000);
+            }
+            breakdown.add(new VatSubtotal(
+                    xml.text(subtotal, category + "cbc:ID", 5),
+                    xml.decimal(subtotal, category + "cbc:Percent"),
+                    xml.decimal(subtotal, "cbc:TaxableAmount"),
+                    xml.decimal(subtotal, "cbc:TaxAmount"),
+                    reason));
+        }
+        return breakdown;
     }
 
     // UBL dates are ISO dates: 2027-03-14
@@ -96,6 +119,6 @@ final class UblInvoiceParser {
                 allowances,
                 charges);
 
-        return new ParsedInvoice(data, lines(xml, root, creditNote));
+        return new ParsedInvoice(data, lines(xml, root, creditNote), vatBreakdown(xml, root));
     }
 }

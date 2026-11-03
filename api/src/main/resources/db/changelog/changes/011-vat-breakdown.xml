@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- VAT per category and rate (EN 16931 BG-23): accounting books each rate separately,
+         and reverse charge (category AE) means the buyer has to account for the tax. -->
+    <changeSet id="019-create-invoice-vat-breakdown" author="kate">
+        <createTable tableName="invoice_vat_breakdown"
+                     remarks="VAT breakdown of an invoice: one row per VAT category and rate (BG-23)">
+            <column name="invoice_id" type="UUID">
+                <constraints nullable="false" foreignKeyName="fk_invoice_vat_breakdown_invoice"
+                             references="invoice(id)" deleteCascade="true"/>
+            </column>
+            <column name="seq_no" type="INT" remarks="Order as in the invoice">
+                <constraints nullable="false"/>
+            </column>
+            <column name="category" type="VARCHAR(5)"
+                    remarks="BT-118: S standard, AE reverse charge, E exempt, K intra-EU, Z zero, G export, O outside scope"/>
+            <column name="rate" type="NUMERIC(5,2)" remarks="BT-119: VAT rate in percent"/>
+            <column name="taxable_amount" type="NUMERIC(15,2)" remarks="BT-116: net amount of this category"/>
+            <column name="tax_amount" type="NUMERIC(15,2)" remarks="BT-117: VAT of this category"/>
+            <column name="exemption_reason" type="VARCHAR(1000)" remarks="BT-120 / BT-121: why no VAT is charged"/>
+        </createTable>
+
+        <addPrimaryKey tableName="invoice_vat_breakdown" columnNames="invoice_id, seq_no"
+                       constraintName="pk_invoice_vat_breakdown"/>
+
+        <!-- Same rule as the other child tables: visible only if the invoice itself is visible -->
+        <sql>
+            ALTER TABLE invoice_vat_breakdown ENABLE ROW LEVEL SECURITY;
+            CREATE
+            POLICY tenant_isolation ON invoice_vat_breakdown
+                USING (EXISTS (SELECT 1 FROM invoice i WHERE i.id = invoice_vat_breakdown.invoice_id));
+        </sql>
+
+        <rollback>
+            <dropTable tableName="invoice_vat_breakdown"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="020-add-line-tax-category" author="kate">
+        <addColumn tableName="invoice_line">
+            <column name="tax_category" type="VARCHAR(5)" remarks="BT-151: VAT category of the line"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>
