@@ -10,6 +10,15 @@ variable "location" {
   default     = "germanywestcentral"
 }
 
+# Some subscriptions (e.g. free trials) may not create PostgreSQL servers in every region.
+# Empty: the database lives in the same region as everything else.
+# PowerShell: $env:TF_VAR_postgres_location = "francecentral"
+variable "postgres_location" {
+  description = "Region of the PostgreSQL server, if it must differ from the main region"
+  type        = string
+  default     = null
+}
+
 variable "tags" {
   description = "Tags on every resource, so costs can be traced to this project"
   type        = map(string)
