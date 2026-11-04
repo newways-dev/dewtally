@@ -13,8 +13,9 @@ resource "random_password" "db" {
 
 # Managed PostgreSQL: Azure takes care of backups and patches.
 resource "azurerm_postgresql_flexible_server" "main" {
-  name                          = "psql-${var.prefix}-${random_string.suffix.result}"
-  location                      = azurerm_resource_group.main.location
+  name = "psql-${var.prefix}-${random_string.suffix.result}"
+  # Same region as everything else, unless the subscription may not create servers there
+  location                      = coalesce(var.postgres_location, azurerm_resource_group.main.location)
   resource_group_name           = azurerm_resource_group.main.name
   version                       = "17"
   sku_name                      = "B_Standard_B1ms" # smallest burstable size: enough for a demo
@@ -48,7 +49,8 @@ resource "azurerm_postgresql_flexible_server_database" "keycloak" {
 }
 
 # Only services inside Azure may connect (the special 0.0.0.0 rule), not the whole internet.
-# A private virtual network would be stricter; it is a known gap in the roadmap.
+# This also covers our containers in another region. A private virtual network would be stricter;
+# it is a known gap in the roadmap.
 resource "azurerm_postgresql_flexible_server_firewall_rule" "azure_services" {
   name             = "allow-azure-services"
   server_id        = azurerm_postgresql_flexible_server.main.id
